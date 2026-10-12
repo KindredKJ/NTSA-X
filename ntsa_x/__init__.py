@@ -9,7 +9,7 @@ from .materializer import LocalMaterializer
 from .reuse import ConvergenceLibrary, fingerprint
 from .indexed_orbit import IndexedCounterOrbitEngine
 from .plugins import PluginManifest, PluginRegistry, PluginWorker, PluginFailure
-from .persistent_workers import PersistentPluginWorker
+from .persistent_workers import PersistentPluginWorker, PersistentScalar
 from .kindred_contracts import KindredContracts, PortContract, DEFAULT_PORTS
 
 __all__ = [
@@ -20,6 +20,6 @@ __all__ = [
     "NexusStore", "NexusNode", "LocalMaterializer",
     "ConvergenceLibrary", "fingerprint", "IndexedCounterOrbitEngine",
     "PluginManifest", "PluginRegistry", "PluginWorker", "PluginFailure",
-    "PersistentPluginWorker",
+    "PersistentPluginWorker", "PersistentScalar",
     "KindredContracts", "PortContract", "DEFAULT_PORTS",
 ]
