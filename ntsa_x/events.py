@@ -13,6 +13,8 @@ SAFE_FIELDS = frozenset({
     "contradiction_count", "external_evidence", "counter_orbit_agreement",
     "source_count", "closure", "selected", "available", "max_steps",
     "agreement", "node_count", "edge_count", "direction",
+    "task_id", "batch_size", "max_parallel", "running", "completed", "failed",
+    "blocked", "throughput",
 })
 
 
