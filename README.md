@@ -57,6 +57,22 @@ python -m examples.demo_milestone03
 
 Read [Milestone 03 documentation](docs/MILESTONE-03.md) for architecture, limitations, and security requirements.
 
+## Milestone 04 — ×100 verified production-capacity initiative
+
+- **Factory scheduler:** bounded, dependency-aware work batches; a 100-task example and up to 100 explicitly configured local worker slots (default 8).
+- **No blind promotion:** each fixed-function worker result is independently recalculated by a local arithmetic oracle before an append-only, parent-linked Nexus commit. Failed tasks block dependent work.
+- **Factory Materializer:** read-only local dashboard for queue progress, verified completions, worker peaks and measured task rate.
+- **Measured benchmarks:** JSON reports compare fresh sequential and parallel 100-task batches. Windows and Linux CI compile source, run tests/demos, capture benchmark artifacts, and enforce a combined test gate.
+
+**×100 is a goal, not a measured speedup.** Worker throughput varies by machine and workload; this prototype is neither a trained AI model nor a production plugin sandbox.
+
+```bash
+python -m examples.demo_factory --tasks 100 --workers 8 --watch
+python -m examples.benchmark_factory --tasks 100 --workers 8 --compare
+```
+
+See [Milestone 04: Factory ×100](docs/MILESTONE-04-FACTORY-X100.md).
+
 ## Run locally
 
 Python 3.12+; no third-party dependencies required:
