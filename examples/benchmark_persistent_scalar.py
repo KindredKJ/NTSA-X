@@ -5,11 +5,10 @@ and linked to Nexus. Does not measure AI-model inference or energy usage.
 """
 import argparse
 from contextlib import ExitStack
-from math import mean, median
 import json
 from pathlib import Path
 from platform import platform, python_version
-from statistics import pstdev
+from statistics import mean, median, pstdev
 from time import perf_counter
 
 from ntsa_x.factory import FactoryTask, ProductionFactory
