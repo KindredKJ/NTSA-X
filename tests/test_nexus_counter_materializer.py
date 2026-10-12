@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from contextlib import closing
 from tempfile import TemporaryDirectory
 from pathlib import Path
 from urllib.request import urlopen
@@ -60,8 +61,9 @@ class TestNexus(unittest.TestCase):
             with NexusStore(path) as graph:
                 parent = graph.append({"value": 1}, report=report())
                 child = graph.append({"value": 2}, report=report(), parents=(parent.digest,))
-                with sqlite3.connect(path) as raw:
+                with closing(sqlite3.connect(path)) as raw:
                     raw.execute("UPDATE nodes SET payload=? WHERE digest=?", ('{"value":999}', parent.digest))
+                    raw.commit()
                 self.assertFalse(graph.verify(child.digest))
                 with self.assertRaises(ValueError):
                     graph.read(child.digest)
