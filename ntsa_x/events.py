@@ -12,6 +12,7 @@ SAFE_FIELDS = frozenset({
     "digest", "parent_count", "check_count", "missing_count", "failed_count",
     "contradiction_count", "external_evidence", "counter_orbit_agreement",
     "source_count", "closure", "selected", "available", "max_steps",
+    "agreement", "node_count", "edge_count", "direction",
 })
 
 
