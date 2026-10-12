@@ -5,6 +5,7 @@ Kindred Root, Brainstem, and Materializer. They do not prove those systems
 have been deployed or connected to NTSA-X.
 """
 from dataclasses import dataclass
+from math import isfinite
 from typing import Mapping
 
 from .events import SAFE_FIELDS
@@ -65,6 +66,13 @@ class KindredContracts:
         payload = event.get("payload")
         if not isinstance(payload, dict) or set(payload) - SAFE_FIELDS:
             raise ValueError("Unsafe event payload")
+        for value in payload.values():
+            if value is not None and type(value) not in (str, int, float, bool):
+                raise ValueError("Event values must be metadata scalars")
+            if isinstance(value, str) and len(value) > 256:
+                raise ValueError("Event metadata exceeds length limit")
+            if type(value) is float and not isfinite(value):
+                raise ValueError("Non-finite event metadata")
         for key in ("event_id", "trace_id", "timestamp", "type"):
             if not isinstance(event.get(key), str) or not event[key] or len(event[key]) > 256:
                 raise ValueError("Malformed event metadata")
