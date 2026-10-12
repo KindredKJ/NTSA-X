@@ -27,26 +27,32 @@ def main():
         database = args.db or Path(temp) / "ntsa-x-demo.sqlite3"
         with NexusStore(database) as store:
             stream = EventStream(sink=viewer.publish)
-            def step(state):
+            def forward_step(state):
                 if args.watch:
-                    sleep(0.6)
+                    sleep(0.3)
                 return {"value": state["value"] + 1}
-            operator = PairedOperator("dual-increment", step, step, axis=(1, 1, -1))
+            def reverse_step(state):
+                if args.watch:
+                    sleep(0.3)
+                return {"distance_to_goal": state["distance_to_goal"] - 1}
+            operator = PairedOperator(
+                "predict-and-reconstruct", forward_step, reverse_step, axis=(1, 1, -1),
+            )
             engine = CounterOrbitEngine(
                 verifier=toy_oracle,
                 project_forward=lambda s: {"value": s["value"]},
-                project_reverse=lambda s: {"value": s["value"]},
+                project_reverse=lambda s: {"value": 3 - s["distance_to_goal"]},
                 store=store, stream=stream, max_steps=5, max_cost=10,
             )
             print("Materializer dashboard:", viewer.url, flush=True)
             if args.watch:
                 input("Open the URL in a browser, then press Enter to begin...")
-            result = engine.run({"value": 0}, {"value": 0}, [operator], context_id="demo-value-3")
+            result = engine.run({"value": 0}, {"distance_to_goal": 3}, [operator], context_id="demo-value-3")
             print("verified:", result.verified, "steps:", result.steps,
                   "state:", result.resolved, "node:", result.committed_digest)
             print("Nexus stats:", store.stats())
             recalled = engine.run(
-                {"value": 0}, {"value": 0}, [operator], context_id="demo-value-3",
+                {"value": 0}, {"distance_to_goal": 3}, [operator], context_id="demo-value-3",
                 recall_digest=result.committed_digest,
             )
             print("recall:", recalled.reason, "steps:", recalled.steps)
