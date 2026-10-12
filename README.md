@@ -19,7 +19,7 @@ Full lineage and scientific hypotheses: [Architecture](docs/ARCHITECTURE.md).
 - **Verification-gated commits** only append to an in-memory hash-linked chain after a passing verifier report.
 - **Materializer event stream** emits bounded metadata-only trace events through a non-authoritative consumer callback.
 
-This is a prototype, not an authorization sandbox: arbitrary Python callbacks must be trusted. Verification check labels are attestations from an injected oracle, not cryptographically established external facts. Persistent graph storage, learned scheduling, full paired trajectory execution, production Materializer service, and empirical benchmarks are future work.
+This is a prototype, not an authorization sandbox: arbitrary Python callbacks must be trusted. Verification check labels are attestations from an injected oracle, not cryptographically established external facts. The foundation above is complemented by later milestones, but trained-model validation, authenticated external evidence, production Materializer connectivity, and empirical benchmarks remain future work.
 
 ## Milestone 02 — Paired orbits + Nexus graph + live local Materializer
 
@@ -39,6 +39,23 @@ python -m examples.demo_counter_orbit --watch
 Open the localhost URL printed by the process and follow the terminal prompt. See [Milestone 02 instructions](docs/MILESTONE-02.md).
 
 This remains a research prototype; external-proof labels are verifier assertions, not independent attestation, and in-process callbacks are not sandboxed. Do not store secrets in this prototype.
+
+## Milestone 03 — Verified reuse and capability-bounded workers
+
+- `ConvergenceLibrary` builds an **additive**, immutable SHA-linked lookup index for exact-input, context-scoped and verifier-revision-scoped convergence reuse.
+- `IndexedCounterOrbitEngine` checks the current evidence and both trajectory projections again before accepting prior results. It preserves the existing `CounterOrbitEngine` API.
+- Higher-order convergence composition explicitly links multiple verified source nodes; composite results must undergo their own verification.
+- Versioned fixed-function `PluginWorker` operations run in separate time-limited Python processes with registered capability manifests. These are **not hardened sandboxes** for untrusted code.
+- `KindredContracts` defines local-only, metadata-based adapter packets for Zero Point, UMR/uDECA, Strata, Kindred Root, Brainstem, and Materializer. **No remote Kindred services have been connected.**
+
+Run:
+
+```bash
+python -m unittest discover -s tests -v
+python -m examples.demo_milestone03
+```
+
+Read [Milestone 03 documentation](docs/MILESTONE-03.md) for architecture, limitations, and security requirements.
 
 ## Run locally
 
