@@ -154,6 +154,27 @@ class TestCounterOrbit(unittest.TestCase):
             self.assertIn("plugin.denied", [e.type for e in telemetry.events])
             self.assertEqual(store.stats()["nodes"], 0)
 
+    def test_complementary_forward_reverse_projections(self):
+        with NexusStore(":memory:") as store:
+            engine = CounterOrbitEngine(
+                verifier=checks,
+                project_forward=lambda s: {"value": s["value"]},
+                project_reverse=lambda s: {"value": 3 - s["remaining"]},
+                store=store, max_steps=3, max_cost=6,
+            )
+            pair = PairedOperator(
+                "predict-and-reconstruct",
+                lambda s: {"value": s["value"] + 1},
+                lambda s: {"remaining": s["remaining"] - 1},
+                axis=(1, -1, 1),
+            )
+            result = engine.run({"value": 0}, {"remaining": 3}, [pair], context_id="dual")
+            self.assertTrue(result.verified)
+            self.assertEqual(result.forward_state, {"value": 3})
+            self.assertEqual(result.reverse_state, {"remaining": 0})
+            self.assertEqual(result.resolved, {"value": 3})
+            self.assertTrue(store.verify(result.committed_digest))
+
     def test_context_mismatch_does_not_recall(self):
         with NexusStore(":memory:") as store:
             engine = self.make_engine(store, max_steps=3)
