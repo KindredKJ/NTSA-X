@@ -1,11 +1,14 @@
 """Factory throughput, DAG consistency, fail-closed commits, and capacity tests."""
 from tempfile import TemporaryDirectory
+from urllib.request import urlopen
+import json
 from pathlib import Path
 from unittest import TestCase
 
 from ntsa_x.events import EventStream
 from ntsa_x.factory import FactoryTask, ProductionFactory, MAX_SCALAR
 from ntsa_x.nexus import NexusStore
+from ntsa_x.materializer import LocalMaterializer
 from ntsa_x.plugins import PluginManifest, PluginRegistry, PluginWorker
 
 
@@ -106,6 +109,25 @@ class FactoryTests(TestCase):
                 self.assertEqual(store.stats()["nodes"], 2)
                 self.assertEqual([r.digest for r in first.receipts],
                                  [r.digest for r in second.receipts])
+
+    def test_factory_telemetry_reaches_local_materializer(self):
+        with NexusStore(":memory:") as store, LocalMaterializer() as viewer:
+            stream = EventStream(sink=viewer.publish)
+            run = ProductionFactory(store, workers=2, stream=stream).run(
+                [FactoryTask("a"), FactoryTask("b")], batch_id="observed"
+            )
+            self.assertEqual(run.completed, 2)
+            with urlopen(viewer.url + "api/events", timeout=5) as response:
+                snapshot = json.load(response)
+            types = [event["type"] for event in snapshot["events"]]
+            self.assertIn("factory.start", types)
+            self.assertIn("factory.commit", types)
+            self.assertIn("factory.close", types)
+            self.assertEqual(snapshot["events"][-1]["payload"]["completed"], 2)
+            with urlopen(viewer.url, timeout=5) as response:
+                self.assertIn(b'id="factory-rate"', response.read())
+            with urlopen(viewer.url + "app.js", timeout=5) as response:
+                self.assertIn(b'factory.close', response.read())
 
     def test_capacity_enforced_and_unsafe_inputs_denied(self):
         with NexusStore(":memory:") as store:
