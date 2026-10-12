@@ -9,7 +9,7 @@
 - **Recovery and isolation:** on a failed response, timeout, process crash or request-ID mismatch, fail the *individual* task, recycle its worker, and allow independent jobs to proceed. Dependents remain blocked until their parents are verified.
 - **Lifecycle control:** configurable process recycling after a maximum number of tasks, bounded startup/response timeouts, explicit pool close, and observable process-start/restart/request/failure counts.
 - **Existing integrity guarantees:** the factory still validates a DAG, independently recomputes each scalar result, and performs verification-gated, parent-linked Nexus commits. Persistent Scalar never overwrites existing verified records.
-- **Evidence-driven performance:** a repeatable 100-job comparison across 1, 4, 8 and 16 worker slots on Windows and Linux, versus the existing one-shot/single-worker baseline. Benchmarks report rates and variability, plus worker startup overhead and Nexus verification.
+- **Evidence-driven performance:** a repeatable 100-job comparison across 1, 4, 8 and 16 worker slots on Windows and Linux, versus the existing one-shot/single-worker baseline. Benchmarks report rates and variability, plus worker startup overhead and Nexus verification. The report recommends a warm-throughput winner and a cold-start winner for the exact measured workload.
 
 ## Run from repository root
 
@@ -18,7 +18,7 @@ py -3.12 -m unittest discover -s tests -v
 py -3.12 -m examples.benchmark_persistent_scalar --tasks 100 --workers 1,4,8,16 --repeats 3 --output persistent-scalar-benchmark.json
 ```
 
-Use `PersistentPluginWorker` as a context manager with `ProductionFactory(plugin_worker=pool)`. The old `PluginWorker` remains available for correctness comparisons and compatibility.
+Use `PersistentScalar` (alias-compatible subclass of `PersistentPluginWorker`) as a context manager with `ProductionFactory(plugin_worker=pool)`. The old `PluginWorker` remains available for correctness comparisons and compatibility.
 
 ## Scientific and security boundaries
 
