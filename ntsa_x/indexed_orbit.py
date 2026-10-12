@@ -49,7 +49,7 @@ class IndexedCounterOrbitEngine(CounterOrbitEngine):
             forward_initial, reverse_initial, operators, context_id=context_id,
             parents=parents, recall_digest=recall_digest,
         )
-        if result.verified and result.committed_digest and result.report:
+        if result.verified and result.reason == "verified_convergence" and result.committed_digest and result.report:
             self.library.register(
                 context_id=context_id, scope=reuse_scope,
                 revision=verifier_revision, inputs=inputs,
