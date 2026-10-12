@@ -37,6 +37,36 @@ def dispatch(command):
     return {"value": output}
 
 
+def serve():
+    """Bounded JSON-lines RPC; accepts only approved scalar operations.
+
+    Each request is isolated by protocol validation, not by OS sandboxing.
+    The caller supervises this process and terminates it on timeout.
+    """
+    sys.stdout.write('{"ready":true,"protocol":"ntsa-fixed/v1"}\n')
+    sys.stdout.flush()
+    while True:
+        raw = sys.stdin.buffer.readline(MAX_BYTES + 1)
+        if not raw:
+            return 0
+        if len(raw) > MAX_BYTES or not raw.endswith(b"\n"):
+            return 2  # Kill protocol session rather than desynchronize frames.
+        request_id = None
+        try:
+            packet = json.loads(raw)
+            if not isinstance(packet, dict) or set(packet) != {"id", "operation", "state"}:
+                raise ValueError("Bad RPC fields")
+            request_id = packet["id"]
+            if not isinstance(request_id, str) or not 0 < len(request_id) <= 64:
+                raise ValueError("Invalid request ID")
+            result = dispatch({"operation": packet["operation"], "state": packet["state"]})
+            response = {"id": request_id, "ok": True, "state": result}
+        except (ValueError, TypeError, UnicodeDecodeError):
+            response = {"id": request_id, "ok": False, "error": "invalid_request"}
+        sys.stdout.write(json.dumps(response, separators=(",", ":")) + "\n")
+        sys.stdout.flush()
+
+
 def main():
     raw = sys.stdin.buffer.read(MAX_BYTES + 1)
     if len(raw) > MAX_BYTES:
@@ -51,4 +81,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(serve() if sys.argv[1:] == ["--serve"] else main())
