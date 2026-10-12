@@ -230,6 +230,19 @@ class ContractTests(TestCase):
         with self.assertRaises(PermissionError):
             registry.wrap_event("outside", e)
 
+    def test_contract_blocks_nested_and_nonfinite_data(self):
+        registry = KindredContracts()
+        event = EventStream().emit("orbit.step", step=1).to_dict()
+        event["payload"]["step"] = {"secret": "nested"}
+        with self.assertRaises(ValueError):
+            registry.wrap_event("kindred.strata", event)
+        event["payload"]["step"] = float("nan")
+        with self.assertRaises(ValueError):
+            registry.wrap_event("kindred.strata", event)
+        event["payload"]["step"] = "x" * 257
+        with self.assertRaises(ValueError):
+            registry.wrap_event("kindred.strata", event)
+
     def test_recall_digest_only(self):
         packet = KindredContracts().wrap_recall_ref("0" * 64)
         self.assertEqual(packet["mode"], "read")
