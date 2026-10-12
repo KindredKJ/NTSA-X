@@ -73,9 +73,22 @@ class ConvergenceLibrary:
             if row is None:
                 return None
             try:
-                node = self.store.read(row[0])
+                binding = self.store.read(row[0])
+                if binding is None:
+                    return None
+                meta = binding.payload
+                if (meta.get("kind") != "convergence_index/v1"
+                    or meta.get("context_id") != context_id
+                    or meta.get("scope") != scope or meta.get("revision") != revision
+                    or meta.get("input_digest") != key[3]
+                    or len(binding.parents) != 1
+                    or meta.get("result_digest") != binding.parents[0]):
+                    return None
+                node = self.store.read(binding.parents[0])
             except ValueError:
-                return None  # Fail closed on corruption.
+                return None  # Fail closed on corruption or redirected entries.
+            if node is None:
+                return None
             p = node.payload
             if (p.get("context_id") != context_id
                 or not isinstance(p.get("forward"), dict)
@@ -98,18 +111,23 @@ class ConvergenceLibrary:
             p = node.payload
             if not all(isinstance(p.get(k), dict) for k in ("forward", "reverse", "resolved")):
                 raise ValueError("Index only accepts complete paired convergence records")
+            binding = self.store.append({
+                "kind": "convergence_index/v1", "context_id": context_id,
+                "scope": scope, "revision": revision,
+                "input_digest": key[3], "result_digest": node_digest,
+            }, report=report, parents=(node_digest,))
             self.store._db.execute("BEGIN IMMEDIATE")
             try:
                 existing = self.store._db.execute(
                     "SELECT node_digest FROM convergence_index WHERE "
                     "context_id=? AND scope=? AND revision=? AND input_digest=?", key
                 ).fetchone()
-                if existing is not None and existing[0] != node_digest:
+                if existing is not None and existing[0] != binding.digest:
                     raise ValueError("Immutable convergence index conflict: bump revision")
                 self.store._db.execute(
                     "INSERT OR IGNORE INTO convergence_index"
                     "(context_id,scope,revision,input_digest,node_digest) VALUES(?,?,?,?,?)",
-                    (*key, node_digest),
+                    (*key, binding.digest),
                 )
                 self.store._db.execute("COMMIT")
             except BaseException:
