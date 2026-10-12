@@ -43,13 +43,13 @@ def serve():
     Each request is isolated by protocol validation, not by OS sandboxing.
     The caller supervises this process and terminates it on timeout.
     """
-    sys.stdout.write('{"ready":true,"protocol":"ntsa-fixed/v1"}\\n')
+    sys.stdout.write('{"ready":true,"protocol":"ntsa-fixed/v1"}\n')
     sys.stdout.flush()
     while True:
         raw = sys.stdin.buffer.readline(MAX_BYTES + 1)
         if not raw:
             return 0
-        if len(raw) > MAX_BYTES or not raw.endswith(b"\\n"):
+        if len(raw) > MAX_BYTES or not raw.endswith(b"\n"):
             return 2  # Kill protocol session rather than desynchronize frames.
         request_id = None
         try:
@@ -63,7 +63,7 @@ def serve():
             response = {"id": request_id, "ok": True, "state": result}
         except (ValueError, TypeError, UnicodeDecodeError):
             response = {"id": request_id, "ok": False, "error": "invalid_request"}
-        sys.stdout.write(json.dumps(response, separators=(",", ":")) + "\\n")
+        sys.stdout.write(json.dumps(response, separators=(",", ":")) + "\n")
         sys.stdout.flush()
 
 
