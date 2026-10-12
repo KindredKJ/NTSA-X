@@ -1,7 +1,13 @@
-name: NTSA-X Python tests
+name: NTSA-X verified throughput
 on:
   push:
   pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ntsa-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   test:
     strategy:
@@ -14,6 +20,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Compile Python modules
+        run: python -m compileall -q ntsa_x examples tests
       - name: Unit and integration tests
         run: python -m unittest discover -s tests -v
       - name: Existing orbital demo
@@ -22,3 +30,37 @@ jobs:
         run: python -m examples.demo_counter_orbit
       - name: Indexed convergence and fixed-worker smoke test
         run: python -m examples.demo_milestone03
+
+  factory-benchmark:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify 100-item factory run and measured sequential comparison
+        run: python -m examples.benchmark_factory --tasks 100 --workers 8 --compare --output factory-bench.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: factory-throughput-${{ matrix.os }}-${{ github.run_id }}
+          path: factory-bench.json
+          retention-days: 14
+          if-no-files-found: error
+
+  verified-gate:
+    needs: [test, factory-benchmark]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce test and benchmark job outcomes
+        env:
+          TEST_RESULT: ${{ needs.test.result }}
+          BENCH_RESULT: ${{ needs.factory-benchmark.result }}
+        shell: bash
+        run: |
+          test "$TEST_RESULT" = "success"
+          test "$BENCH_RESULT" = "success"
