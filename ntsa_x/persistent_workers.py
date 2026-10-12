@@ -250,3 +250,7 @@ class PersistentPluginWorker(PluginWorker):
 
     def __exit__(self, *_exc):
         self.close()
+
+
+class PersistentScalar(PersistentPluginWorker):
+    """Named NTSA-X warm-worker subsystem; same bounded, verified pool contract."""
