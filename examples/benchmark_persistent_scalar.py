@@ -99,6 +99,12 @@ def main():
             if baseline_rate else None
         )
         persistent[str(count)] = group
+    recommended_warm = max(
+        workers, key=lambda n: persistent[str(n)]["median_tasks_per_second"]
+    )
+    recommended_cold = min(
+        workers, key=lambda n: persistent[str(n)]["median_end_to_end_seconds"]
+    )
     report = {
         "schema_version": "ntsa-persistent-scalar-benchmark/v1",
         "environment": {"platform": platform(), "python": python_version()},
@@ -106,6 +112,9 @@ def main():
         "tasks": args.tasks, "repeats": args.repeats,
         "baseline_oneshot_single": baseline,
         "persistent_scalar": persistent,
+        "recommended_workers_warm_throughput": recommended_warm,
+        "recommended_workers_cold_start_100_tasks": recommended_cold,
+        "recommendation_note": "Specific to this measured synthetic workload, not general automatic hardware tuning.",
         "warning": "Not a trained AI-model benchmark, 100x claim, or measured joules.",
     }
     rendered = json.dumps(report, sort_keys=True, indent=2)
