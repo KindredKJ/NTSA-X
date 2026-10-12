@@ -4,10 +4,19 @@ on:
   pull_request:
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m unittest discover -s tests -v
+      - name: Unit and integration tests
+        run: python -m unittest discover -s tests -v
+      - name: Existing orbital demo
+        run: python -m examples.demo_orbit
+      - name: Paired orbit Nexus + Materializer smoke test
+        run: python -m examples.demo_counter_orbit
