@@ -20,3 +20,5 @@ jobs:
         run: python -m examples.demo_orbit
       - name: Paired orbit Nexus + Materializer smoke test
         run: python -m examples.demo_counter_orbit
+      - name: Indexed convergence and fixed-worker smoke test
+        run: python -m examples.demo_milestone03
