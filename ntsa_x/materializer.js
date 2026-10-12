@@ -4,6 +4,7 @@
   const seen = new Set();
   const records = [];
   let steps = 0, commits = 0, nodes = 0, agreement = null;
+  let factoryTotal = 0, factoryDone = 0, factoryCommitted = 0, factoryPeak = 0, factoryRate = null;
   const forward = [], reverse = [];
   const connection = $("connection");
 
@@ -43,6 +44,30 @@
     if (event.type === "counter_orbit.compare") agreement = p.agreement;
     if (event.type === "commit.append") commits++;
     if (event.type === "nexus.commit") nodes = Math.max(nodes, Number(p.node_count || 0));
+    if (event.type === "factory.start") {
+      factoryTotal = Number(p.batch_size || 0);
+      factoryDone = 0;
+      factoryCommitted = 0;
+      factoryPeak = 0;
+      factoryRate = null;
+    }
+    if (event.type === "factory.dispatch") {
+      factoryPeak = Math.max(factoryPeak, Number(p.running || 0));
+    }
+    if (event.type === "factory.commit") {
+      factoryDone++;
+      factoryCommitted++;
+    }
+    if (event.type === "factory.fail" || event.type === "factory.blocked") factoryDone++;
+    if (event.type === "factory.close") {
+      factoryDone = Number(p.completed || 0) + Number(p.failed || 0) + Number(p.blocked || 0);
+      factoryCommitted = Number(p.completed || 0);
+      factoryRate = Number(p.throughput || 0);
+    }
+    $("factory-queue").textContent = factoryDone + " / " + factoryTotal;
+    $("factory-commits").textContent = String(factoryCommitted);
+    $("factory-workers").textContent = String(factoryPeak);
+    $("factory-rate").textContent = factoryRate === null ? "—" : factoryRate.toFixed(1) + "/s";
     $("steps").textContent = String(steps);
     $("commits").textContent = String(commits);
     $("nodes").textContent = String(nodes);
