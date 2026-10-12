@@ -6,6 +6,10 @@ from .orbit import Operator, OrbitEngine, OrbitResult
 from .counter_orbit import CounterOrbitEngine, CounterOrbitResult, PairedOperator
 from .nexus import NexusStore, NexusNode
 from .materializer import LocalMaterializer
+from .reuse import ConvergenceLibrary, fingerprint
+from .indexed_orbit import IndexedCounterOrbitEngine
+from .plugins import PluginManifest, PluginRegistry, PluginWorker, PluginFailure
+from .kindred_contracts import KindredContracts, PortContract, DEFAULT_PORTS
 
 __all__ = [
     "Block", "MemoryChain", "Scheduler", "GateDecision",
@@ -13,4 +17,7 @@ __all__ = [
     "EventStream", "MaterializerEvent", "Operator", "OrbitEngine", "OrbitResult",
     "CounterOrbitEngine", "CounterOrbitResult", "PairedOperator",
     "NexusStore", "NexusNode", "LocalMaterializer",
+    "ConvergenceLibrary", "fingerprint", "IndexedCounterOrbitEngine",
+    "PluginManifest", "PluginRegistry", "PluginWorker", "PluginFailure",
+    "KindredContracts", "PortContract", "DEFAULT_PORTS",
 ]
