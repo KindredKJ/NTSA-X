@@ -21,6 +21,25 @@ Full lineage and scientific hypotheses: [Architecture](docs/ARCHITECTURE.md).
 
 This is a prototype, not an authorization sandbox: arbitrary Python callbacks must be trusted. Verification check labels are attestations from an injected oracle, not cryptographically established external facts. Persistent graph storage, learned scheduling, full paired trajectory execution, production Materializer service, and empirical benchmarks are future work.
 
+## Milestone 02 — Paired orbits + Nexus graph + live local Materializer
+
+**Implemented in the research prototype:**
+
+- Two coordinated forward/reverse computational paths, agreement checks, contradiction veto and a **shared bounded abstract compute budget**.
+- **Persistent SQLite Nexus DAG** with multiple parents, canonical SHA-256 lineage verification, cross-session recall and transactional append-only application operations.
+- **Local Materializer browser dashboard** with Server-Sent Events, read-only orbit traces, convergence/commit events and Nexus counters. The viewer is hosted only on loopback and is not a deployed integration with an existing Kindred Materializer system.
+
+**Watch locally:**
+
+```bash
+python -m unittest discover -s tests -v
+python -m examples.demo_counter_orbit --watch
+```
+
+Open the localhost URL printed by the process and follow the terminal prompt. See [Milestone 02 instructions](docs/MILESTONE-02.md).
+
+This remains a research prototype; external-proof labels are verifier assertions, not independent attestation, and in-process callbacks are not sandboxed. Do not store secrets in this prototype.
+
 ## Run locally
 
 Python 3.12+; no third-party dependencies required:

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>NTSA-X · Materializer</title>
+  <link rel="stylesheet" href="/style.css">
+  <script defer src="/app.js"></script>
+</head>
+<body>
+  <main>
+    <header>
+      <div><p class="kicker">KINDRED LABS / EXPERIMENTAL COMPUTE</p>
+      <h1>NTSA<span>–X</span> <small>Materializer</small></h1>
+      <p class="subtitle">Live orbital telemetry / paired convergence / Nexus lineage</p></div>
+      <div id="connection" class="signal">CONNECTING</div>
+    </header>
+    <section class="metrics" aria-label="Runtime counters">
+      <div><p>ORBIT STEPS</p><strong id="steps">0</strong></div>
+      <div><p>COUNTER AGREEMENT</p><strong id="agreement">—</strong></div>
+      <div><p>VERIFIED COMMITS</p><strong id="commits">0</strong></div>
+      <div><p>NEXUS NODES</p><strong id="nodes">0</strong></div>
+    </section>
+    <section class="stage">
+      <div class="section-head"><h2>Computational orbit</h2><span>X: DUALITY · Y: ABSTRACTION · Z: LINEAGE</span></div>
+      <svg id="orbit" viewBox="0 0 920 320" role="img" aria-label="Live orbit trajectories">
+        <defs>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M40 0 H0 V40" fill="none" stroke="#1d3548" stroke-width="1"/>
+          </pattern>
+        </defs>
+        <rect width="920" height="320" fill="url(#grid)"/>
+        <line x1="30" x2="890" y1="160" y2="160" stroke="#466075" stroke-dasharray="5 8"/>
+        <path id="forward-path" fill="none" stroke="#72eee0" stroke-width="3"/>
+        <path id="reverse-path" fill="none" stroke="#d0a4ff" stroke-width="3"/>
+        <circle id="forward-dot" r="7" fill="#72eee0" cx="40" cy="90"/>
+        <circle id="reverse-dot" r="7" fill="#d0a4ff" cx="40" cy="230"/>
+        <text x="28" y="28" fill="#72eee0">FORWARD PATH</text>
+        <text x="28" y="308" fill="#d0a4ff">COUNTER PATH</text>
+      </svg>
+    </section>
+    <section class="feed">
+      <div class="section-head"><h2>Event stream</h2><span>METADATA ONLY · READ-ONLY · LOCALHOST</span></div>
+      <ol id="events" aria-live="polite"></ol>
+    </section>
+    <footer>Research prototype. Verification requires trusted evidence. This renderer cannot change kernel state.</footer>
+  </main>
+</body>
+</html>
