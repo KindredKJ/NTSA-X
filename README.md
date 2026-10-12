@@ -73,6 +73,18 @@ python -m examples.benchmark_factory --tasks 100 --workers 8 --compare
 
 See [Milestone 04: Factory ×100](docs/MILESTONE-04-FACTORY-X100.md).
 
+## Milestone 05 — Persistent Scalar
+
+**Persistent Scalar** keeps a bounded number of trusted scalar worker processes warm, reuses them across tasks, verifies request/response IDs, and recycles or replaces failing workers. The existing one-shot API remains intact. It plugs into the verified factory without changing the Nexus ledger contract.
+
+The 100-task benchmark compares **1, 4, 8, and 16 persistent workers** against the one-shot single-worker baseline, reporting absolute rates and variability on Windows and Linux. This is an optimization of synthetic fixed-function task processing, **not** a claim of 100× AI-model acceleration.
+
+```bash
+python -m examples.benchmark_persistent_scalar --tasks 100 --workers 1,4,8,16 --repeats 3
+```
+
+See [Persistent Scalar technical specification](docs/MILESTONE-05-PERSISTENT-SCALAR.md).
+
 ## Run locally
 
 Python 3.12+; no third-party dependencies required:
