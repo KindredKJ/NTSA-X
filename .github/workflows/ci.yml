@@ -51,8 +51,28 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
+  persistent-benchmark:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compare Persistent Scalar vs one-shot workers
+        run: python -m examples.benchmark_persistent_scalar --tasks 100 --workers 1,4,8,16 --repeats 2 --output persistent-scalar-bench.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: persistent-scalar-${{ matrix.os }}-${{ github.run_id }}
+          path: persistent-scalar-bench.json
+          retention-days: 14
+          if-no-files-found: error
+
   verified-gate:
-    needs: [test, factory-benchmark]
+    needs: [test, factory-benchmark, persistent-benchmark]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -60,7 +80,9 @@ jobs:
         env:
           TEST_RESULT: ${{ needs.test.result }}
           BENCH_RESULT: ${{ needs.factory-benchmark.result }}
+          PERSISTENT_RESULT: ${{ needs.persistent-benchmark.result }}
         shell: bash
         run: |
           test "$TEST_RESULT" = "success"
           test "$BENCH_RESULT" = "success"
+          test "$PERSISTENT_RESULT" = "success"
