@@ -58,6 +58,22 @@ In another terminal, connect the existing browser gateway in **student-only** mo
 
 Then visit http://127.0.0.1:8765. Exact approved recall happens before native inference. **No teacher engine needs to be installed for student-only serving.**
 
+## Continue native learning across training waves
+
+For each new batch, export a reviewed train/eval dataset and initialize training
+from a prior checkpoint rather than resetting the native recurrent weights.
+Optional rehearsal examples should also be approved and licensed, and the
+combined train/replay prompts must remain disjoint from the evaluation set.
+
+    py -3.12 -m ntsa_x.native_train --train .local/new-train.jsonl --eval .local/new-eval.jsonl --replay .local/rehearsal.jsonl --initialize-from .local/native-v1 --output .local/native-v2 --width 96 --layers 2 --max-context 1024 --epochs 4 --batch-size 4 --lr 0.001 --device cpu
+
+The new checkpoint retains a SHA-256 lineage pointer to prior native weights
+in its report. A baseline held-out evaluation is performed before updating:
+if all training epochs perform worse, the new checkpoint saves the prior weights
+rather than the degraded candidate. This is a limited held-out loss gate, **not**
+a guarantee against catastrophic forgetting or reduced task-specific quality.
+Review independent benchmarks before promoting the new checkpoint to serving.
+
 ## Validation gates
 
 1. State-update router, gate, candidate and cross-lane parameters receive nonzero gradients.
