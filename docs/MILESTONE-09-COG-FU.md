@@ -93,6 +93,25 @@ Serve COG-FU locally:
 
     py -3.12 -m ntsa_x.cog_fu_server --checkpoint .local/cog-fu-v1 --model-id ntsa-cog-fu-v1 --port 8081 --max-new-tokens 128
 
+**Small-checkpoint context fix:** The browser gateway prepends a ~354-byte
+system instruction to every request. A smoke-test checkpoint trained with
+--max-context 128 cannot accept that request when the old server enforces
+the training context as a serving limit. Starting with the current COG-FU
+server, the *serving-only* recurrent context cap defaults to at least 1024
+bytes, while the checkpoint's learned weights and diffusion answer capacity
+remain unchanged. You can explicitly set a larger bound with
+`--context-limit 2048` for longer chat history. A larger serving context is
+possible because the recurrent cortex does not contain learned input-position
+embeddings; however, quality for longer inputs is **not established** by
+training on a 128-byte window. No retraining or deletion is needed.
+
+Restart **both** the model server and gateway after updating the repository;
+old running processes do not pick up code changes automatically.
+
+For quick local diagnostics with the model server running:
+
+    Invoke-RestMethod http://127.0.0.1:8081/health
+
 In a separate terminal, connect to the existing recall-first web UI without
 any teacher inference engine:
 
