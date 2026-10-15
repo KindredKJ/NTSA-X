@@ -26,6 +26,8 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Native agent workbench safety and tool protocol
         run: python -m unittest discover -s tests -p 'test_agent_workbench.py' -v
+      - name: Bounded mission controller, approvals, observations and failure tests
+        run: python -m unittest discover -s tests -p 'test_agent_mission.py' -v
       - name: Existing orbital demo
         run: python -m examples.demo_orbit
       - name: Paired orbit Nexus + Materializer smoke test
