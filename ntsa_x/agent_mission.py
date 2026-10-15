@@ -38,6 +38,7 @@ def validate_mission(mission: object) -> dict:
             or set(mission) != {"version", "goal", "inputs"}
             or type(mission["version"]) is not int
             or mission["version"] != MISSION_VERSION
+            or not isinstance(mission["goal"], str)
             or mission["goal"] not in GOALS
             or not isinstance(mission["inputs"], dict)):
         raise WorkbenchError("Mission must contain version, supported goal and inputs")
@@ -220,6 +221,16 @@ class MissionController:
                 break
         if receipt["status"] == "running":
             receipt["status"] = "completed"
+        if receipt["status"] == "failed":
+            failure_tool = receipt["steps"][-1]["tool"]
+            receipt["recommended_recovery"] = {
+                "python.tests": "Inspect failing test output; propose a NEW reviewed code inspection or repair plan. No automatic edits or reruns.",
+                "web.fetch": "Inspect allowed hostname and network error; propose a NEW reviewed mission. No automatic URL changes.",
+                "browser.snapshot": "Inspect browser availability and allowed hostname; propose a NEW reviewed mission.",
+                "workspace.read": "Check requested workspace path or file access; propose a NEW reviewed mission.",
+                "git.diff": "Check local Git configuration or requested source path; propose a NEW reviewed mission.",
+                "git.status": "Check Git initialization and repository access; propose a NEW reviewed mission.",
+            }.get(failure_tool, "Inspect the recorded observation, then propose a NEW reviewed mission.")
         receipt["observed_steps"] = sum(
             row["status"] == "observed" for row in receipt["steps"])
         receipt["skipped_steps"] = sum(
