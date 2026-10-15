@@ -109,7 +109,8 @@ class _NoRedirect(HTTPRedirectHandler):
 class LocalInference:
     """OpenAI-compatible streaming POST to an explicitly loopback backend."""
 
-    def __init__(self, endpoint: str, model: str, *, timeout: float = 60):
+    def __init__(self, endpoint: str, model: str, *, timeout: float = 60,
+                 max_tokens: int = 512):
         parts = urlsplit(endpoint)
         if (parts.scheme != "http"
                 or parts.hostname not in ("127.0.0.1", "::1", "localhost")
@@ -121,12 +122,15 @@ class LocalInference:
             raise ValueError("Model ID must be between 1 and 128 characters")
         if not 0 < timeout <= 300:
             raise ValueError("Timeout must be in (0,300]")
+        if type(max_tokens) is not int or not 1 <= max_tokens <= 4096:
+            raise ValueError("Invalid local inference token limit")
         self.endpoint, self.model, self.timeout = endpoint, model, timeout
+        self.max_tokens = max_tokens
 
     def stream(self, messages: list[dict]) -> Iterator[str]:
         payload = json.dumps({
             "model": self.model, "messages": messages,
-            "stream": True, "temperature": 0.4, "max_tokens": 512,
+            "stream": True, "temperature": 0.4, "max_tokens": self.max_tokens,
         }, allow_nan=False).encode("utf-8")
         request = Request(
             self.endpoint, data=payload,
@@ -383,6 +387,8 @@ def main() -> None:
                         help="Teacher model ID hosted by your local OpenAI-compatible server")
     parser.add_argument("--student-model",
                         help="Local student model ID; evaluated and licensed separately")
+    parser.add_argument("--student-max-tokens", type=int, default=128,
+                        help="Maximum student output bytes/tokens requested (default 128)")
     parser.add_argument("--student-endpoint",
                         default="http://127.0.0.1:8081/v1/chat/completions")
     parser.add_argument("--use-student", action="store_true",
@@ -397,7 +403,8 @@ def main() -> None:
         parser.error("Teacher mode requires --model")
     from .learning import LearningCorpus
     teacher = LocalInference(args.endpoint, args.model) if args.model else None
-    student = (LocalInference(args.student_endpoint, args.student_model)
+    student = (LocalInference(args.student_endpoint, args.student_model,
+                              max_tokens=args.student_max_tokens)
                if args.student_model else None)
     service = LiveService(TurnStore(args.db), teacher, LearningCorpus(args.corpus_db),
                           student=student, use_student=args.use_student)

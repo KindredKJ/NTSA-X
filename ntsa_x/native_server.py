@@ -36,7 +36,7 @@ def handler_factory(model,model_id,port,max_new_tokens):
         def do_GET(self):
             if self.path=="/health":
                 return self.respond(200,{"status":"ok","architecture":
-                                          "ntsa-x-native-recurrent-v1",
+                                          getattr(model, "architecture", "ntsa-x-native-recurrent-v1"),
                                           "teacher_loaded":False})
             return self.respond(404,{"error":"Not found"})
 

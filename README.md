@@ -126,6 +126,22 @@ The native model is a research-scale starting point. It is not pretrained,
 frontier-benchmarked, or automatically ready to replace a teacher model
 for useful everyday questions. See [Milestone 08 architecture and execution](docs/MILESTONE-08-NATIVE-TRAINABLE-STATE.md).
 
+## Milestone 09 — COG-FU cognitive–diffusion hybrid
+
+**COG-FU** couples the existing native NTSA-X X/Y/Z recurrent cognitive
+state to a trainable discrete masked-byte diffusion denoiser, with
+**simultaneous causal and diffusion objectives**. Both pathways learn in
+one PyTorch training pass; the denoiser's loss backpropagates into the same
+cognitive state encoder. Native checkpoints can initialize its cortex,
+and the existing verified-recall-first live UI can run COG-FU in
+**teacher-free student mode**.
+
+This is a research-scale, unpretrained hybrid—not a proven frontier model
+or a verified reasoning system. The diffusion method is discrete iterative
+mask refinement, not Gaussian image diffusion. See the
+[COG-FU implementation guide](docs/MILESTONE-09-COG-FU.md) for training,
+local hosting, evaluation, licensing and operational limits.
+
 ## Run locally
 
 Python 3.12+; no third-party dependencies required:
