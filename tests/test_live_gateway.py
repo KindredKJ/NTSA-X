@@ -115,9 +115,9 @@ class GatewayTests(TestCase):
 
     def test_backend_parses_openai_sse(self):
         frames = [
-            b'data: {"choices":[{"delta":{"content":"Hi"}}]}\n\n',
-            b'data: {"choices":[{"delta":{"content":" there"}}]}\n\n',
-            b'data: [DONE]\n\n',
+            b'data: {"choices":[{"delta":{"content":"Hi"}}]}\n', b'\n',
+            b'data: {"choices":[{"delta":{"content":" there"}}]}\n', b'\n',
+            b'data: [DONE]\n', b'\n',
         ]
 
         class Stream:
