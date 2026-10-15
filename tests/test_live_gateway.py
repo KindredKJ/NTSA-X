@@ -54,6 +54,21 @@ class GatewayTests(TestCase):
                 [("unverified",)])
         self.assertFalse((Path(self.temp.name) / "nexus.db").exists())
 
+    def test_optional_operator_identity_is_bounded_and_explicit(self):
+        fake = FakeInference()
+        service = LiveService(
+            self.store, None, student=fake, use_student=True,
+            identity_text="NTSA-X COG-FU: experimental research model, not sentient")
+        self.assertEqual(
+            "".join(service.stream("session_0001", "Who are you?")),
+            "hello world")
+        self.assertIn("Identity card supplied by the local operator",
+                      fake.messages[0]["content"])
+        self.assertIn("not sentient", fake.messages[0]["content"])
+        self.assertEqual(service.last_result("session_0001")["source"], "student")
+        with self.assertRaisesRegex(ValueError, "1200"):
+            LiveService(self.store, FakeInference(), identity_text="x" * 1201)
+
     def test_context_is_scoped_to_session_and_persists_on_reopen(self):
         first = FakeInference()
         list(LiveService(self.store, first).stream("session_0001", "one"))

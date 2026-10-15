@@ -90,6 +90,8 @@ jobs:
         run: python -m unittest discover -s tests -p 'test_native_model.py' -v
       - name: COG-FU joint cognition and diffusion integration tests
         run: python -m unittest discover -s tests -p 'test_cog_fu.py' -v
+      - name: COG-FU language acquisition, rights and ablation tests
+        run: python -m unittest discover -s tests -p 'test_cog_fu_language.py' -v
       - name: Verify existing test suite with PyTorch available
         run: python -m unittest discover -s tests -v
 

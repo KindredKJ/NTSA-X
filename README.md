@@ -126,6 +126,21 @@ The native model is a research-scale starting point. It is not pretrained,
 frontier-benchmarked, or automatically ready to replace a teacher model
 for useful everyday questions. See [Milestone 08 architecture and execution](docs/MILESTONE-08-NATIVE-TRAINABLE-STATE.md).
 
+## Milestone 10 — COG-FU native language acquisition
+
+**Implemented research tools:** Train the recurrent cognitive cortex and
+masked-byte diffusion denoiser jointly from **rights-confirmed local UTF-8
+documents**, with document-disjoint held-out evaluation, versioned checkpoints,
+optional matched recurrent-only baselines, safe UTF-8 output transport, and
+operator-authored local identity context.
+
+**No large language training has been performed or independently certified.**
+These additions do not make the tiny smoke-test checkpoint conversationally
+competent or establish improved reasoning. See
+[Milestone 10: native language acquisition](docs/MILESTONE-10-COG-FU-LANGUAGE.md)
+for the explicit data manifest, CPU pilot commands, benchmark definitions,
+scientific limits and the teacher-free launch procedure.
+
 ## Milestone 09 — COG-FU cognitive–diffusion hybrid
 
 **COG-FU** couples the existing native NTSA-X X/Y/Z recurrent cognitive
