@@ -49,6 +49,10 @@ def validate_mission(mission: object) -> dict:
         raise WorkbenchError("code.inspect requires path")
     if goal == "research.inspect" and "url" not in args:
         raise WorkbenchError("research.inspect requires url")
+    if goal == "code.inspect" and "term" in args and (
+            len(args["term"]) > 128 or "\n" in args["term"]
+            or "\r" in args["term"]):
+        raise WorkbenchError("Code search term exceeds safe bound")
     for key, value in args.items():
         if key == "browser_fallback":
             if type(value) is not bool:
