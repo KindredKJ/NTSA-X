@@ -1,0 +1,24 @@
+# Local model outputs and approved learning datasets
+.local/
+.kindred/
+checkpoints/
+runs/
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+*.gguf
+*.safetensors
+*.pt
+*.pth
+
+# Python environment and test artifacts
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
