@@ -113,6 +113,19 @@ student fine-tuning constitutes training of the native NTSA-X reasoning kernel.
 online learning.** Read [Milestone 07](docs/MILESTONE-07-RECALL-TEACHER-STUDENT.md)
 for consent, export, actual training, licensing, validation and student serving.
 
+## Milestone 08 — Native trainable recurrent NTSA-X
+
+NTSA-X now includes an **independent, from-scratch non-Transformer model**
+with learned X/Y/Z recurrent latent-state updates, a byte-stream language
+head, gradient-based training and held-out evaluation. It uses PyTorch as
+its numerical/autograd engine but **does not instantiate a Transformer or
+load teacher weights**. Its standalone local SSE server connects directly
+to the existing recall-first conversational UI with student-only mode.
+
+The native model is a research-scale starting point. It is not pretrained,
+frontier-benchmarked, or automatically ready to replace a teacher model
+for useful everyday questions. See [Milestone 08 architecture and execution](docs/MILESTONE-08-NATIVE-TRAINABLE-STATE.md).
+
 ## Run locally
 
 Python 3.12+; no third-party dependencies required:
