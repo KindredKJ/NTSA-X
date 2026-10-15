@@ -75,6 +75,8 @@ def main():
     parser.add_argument("--max-length", type=int, default=1024)
     parser.add_argument("--learning-rate", type=float, default=0.0001)
     parser.add_argument("--rank", type=int, default=8)
+    parser.add_argument("--merge-model", action="store_true",
+                        help="Also export standalone model weights with the LoRA adapter merged")
     args = parser.parse_args()
     if (not 1 <= args.epochs <= 20 or not 128 <= args.max_length <= 8192
             or not 1e-7 <= args.learning_rate <= 0.001
@@ -135,6 +137,12 @@ def main():
     output.mkdir(parents=True)
     model.save_pretrained(output)
     tokenizer.save_pretrained(output)
+    if args.merge_model:
+        merged = model.merge_and_unload()
+        merged.config.use_cache = True
+        merged_path = output / "merged"
+        merged.save_pretrained(merged_path, safe_serialization=True)
+        tokenizer.save_pretrained(merged_path)
     report = {
         "student_base_model": str(args.base_model),
         "train_examples": len(train_examples), "holdout_examples": len(eval_examples),
@@ -142,6 +150,7 @@ def main():
         "after_eval_loss": after, "after_eval_perplexity": math.exp(min(after, 50)),
         "teacher_calls_during_training": 0, "independent_generalization_proven": False,
         "requires_human_quality_evaluation": True,
+        "merged_student_created": args.merge_model,
     }
     (output / "training_report.json").write_text(
         json.dumps(report, indent=2), encoding="utf-8")
