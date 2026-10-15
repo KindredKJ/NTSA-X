@@ -176,6 +176,19 @@ class NativeOrbitTests(TestCase):
                 logits,states=loaded(torch.tensor([prompt]))
             self.assertEqual(logits.shape[-1],262)
             self.assertEqual(states[0].shape,(1,3,16))
+            next_checkpoint=root/"native-v2"
+            resumed=train(train_path=root/"train.jsonl",
+                          eval_path=root/"eval.jsonl",
+                          output=next_checkpoint,
+                          initialize_from=destination,
+                          replay_path=root/"train.jsonl",
+                          width=16,layers=1,max_context=128,
+                          epochs=1,batch_size=2,device="cpu")
+            self.assertEqual(resumed["rehearsal_examples"],4)
+            self.assertEqual(len(resumed["previous_checkpoint_sha256"]),64)
+            self.assertLessEqual(resumed["best_heldout_loss"],
+                                 resumed["before_heldout_loss"])
+            self.assertTrue((next_checkpoint/"weights.pt").exists())
             with self.assertRaises(FileExistsError):
                 train(train_path=root/"train.jsonl",eval_path=root/"eval.jsonl",
                       output=destination,width=16,layers=1,max_context=128,
