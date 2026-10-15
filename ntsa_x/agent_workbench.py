@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 import argparse
-import fnmatch
 import json
 import os
 import re
@@ -164,6 +163,8 @@ class Workbench:
 
     def path(self, relative: str, *, directory: bool = False,
              new_file: bool = False) -> Path:
+        if relative == "." and directory:
+            return self.root
         if (not isinstance(relative, str) or not 1 <= len(relative) <= 1024
                 or Path(relative).is_absolute() or "\x00" in relative
                 or re.match(r"^[A-Za-z]:", relative)):
@@ -315,6 +316,8 @@ class Workbench:
                 raise WorkbenchError("Write parent directory must exist")
             if file.is_dir() or file.is_symlink():
                 raise WorkbenchError("Cannot write a directory or symlink")
+            if file.exists() and file.stat().st_size > MAX_READ_BYTES:
+                raise WorkbenchError("Existing file too large for guarded overwrite")
             existing = file.read_bytes() if file.exists() else None
             if existing is not None and sha256(existing).hexdigest() != args.get("expected_sha256"):
                 raise WorkbenchError("Existing file requires matching original SHA-256")
