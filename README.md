@@ -85,6 +85,19 @@ python -m examples.benchmark_persistent_scalar --tasks 100 --workers 1,4,8,16 --
 
 See [Persistent Scalar technical specification](docs/MILESTONE-05-PERSISTENT-SCALAR.md).
 
+## Milestone 06 — Local live conversation bridge
+
+**New, experimental:** a streaming conversational interface that connects to an already running **local** OpenAI-compatible language-model server. Session history is stored in a separate SQLite conversation database; model replies are explicitly unverified and are **never** inserted into the verified Nexus memory chain. The browser UI supports streamed text and optional browser-mediated dictation/speech synthesis (browser speech recognition may use external services). This adapter does not convert NTSA-X into a trained conversational model or connect UMR Kindred.
+
+Run your inference server at http://127.0.0.1:8080 and from the repository root:
+
+```powershell
+py -3.12 -m unittest discover -s tests -v
+py -3.12 -m ntsa_x.live_gateway --model YOUR_ACTUAL_LOCAL_MODEL_ID
+```
+
+Open http://127.0.0.1:8765. The gateway binds to loopback only; do not expose it publicly without a separate authenticated, TLS-protected and reviewed production service. See [Milestone 06 guide](docs/MILESTONE-06-LIVE-CONVERSATION.md).
+
 ## Run locally
 
 Python 3.12+; no third-party dependencies required:
