@@ -6,6 +6,7 @@ unverified and is deliberately stored outside the verified Nexus DAG.
 from __future__ import annotations
 
 from argparse import ArgumentParser
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Lock
@@ -62,10 +63,15 @@ class TurnStore:
                 "ON dialogue(session_id, id)"
             )
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self):
         connection = sqlite3.connect(self.path, timeout=10)
-        connection.execute("PRAGMA busy_timeout = 10000")
-        return connection
+        try:
+            connection.execute("PRAGMA busy_timeout = 10000")
+            with connection:
+                yield connection
+        finally:
+            connection.close()
 
     def history(self, session_id: str, limit: int = 24) -> list[dict]:
         valid_session(session_id)
