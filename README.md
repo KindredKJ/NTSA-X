@@ -126,6 +126,22 @@ The native model is a research-scale starting point. It is not pretrained,
 frontier-benchmarked, or automatically ready to replace a teacher model
 for useful everyday questions. See [Milestone 08 architecture and execution](docs/MILESTONE-08-NATIVE-TRAINABLE-STATE.md).
 
+## Milestone 12 — Bounded multi-step agent missions
+
+Added an **explicit mission controller** over Milestone 11 tools: inspect a
+repository, investigate a source file, diagnose unit tests, or retrieve
+an allowlisted research page with optional approved browser snapshot.
+The controller plans within a fixed template, verifies observed tool
+results, fails closed on nonzero exit status, and gives recovery guidance.
+Consequential tools still need an **exact reviewed mission digest** and
+separate opt-in capabilities. Untrusted web output cannot alter permissions
+or cause unreviewed actions.
+
+**This is deterministic orchestration, not a trained autonomous
+intelligence or a fluent language model.** See
+[Milestone 12 mission instructions](docs/MILESTONE-12-AGENT-MISSIONS.md)
+for repeatable local PowerShell commands and limitations.
+
 ## Milestone 11 — NTSA-X agent skills workbench
 
 The new **research-grade, local-first agent workbench** adds typed,
