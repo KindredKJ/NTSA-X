@@ -149,6 +149,21 @@ class WorkbenchTests(TestCase):
             self.assertTrue(receipt["completed"])
             mocked.assert_called_once()
 
+    def test_conservative_english_intents_generate_plans_only(self):
+        from ntsa_x.agent_intent import propose
+        self.assertEqual(propose("git status")["steps"][0]["tool"],
+                         "git.status")
+        self.assertEqual(propose("run tests")["steps"][0]["tool"],
+                         "python.tests")
+        self.assertEqual(propose("search files for model")["steps"][0]["args"],
+                         {"pattern": "model"})
+        self.assertEqual(propose("read file readme.md")["steps"][0]["args"],
+                         {"path": "readme.md"})
+        for request in ("delete everything", "deploy prod",
+                        "send my credentials", "run shell rm -rf ."):
+            with self.assertRaises(WorkbenchError):
+                propose(request)
+
     def test_denied_actions_prevalidate_before_prior_effect(self):
         wb = Workbench(self.root, flags=CapabilityFlags(write=True))
         p = plan(
