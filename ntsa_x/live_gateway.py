@@ -12,7 +12,7 @@ from threading import Lock
 from typing import Iterator
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import Request, HTTPRedirectHandler, build_opener
 import json
 import sqlite3
 import re
@@ -93,6 +93,13 @@ class TurnStore:
             db.execute("DELETE FROM dialogue WHERE session_id = ?", (session_id,))
 
 
+class _NoRedirect(HTTPRedirectHandler):
+    """Prevent a loopback model endpoint from forwarding prompts elsewhere."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 class LocalInference:
     """OpenAI-compatible streaming POST to an explicitly loopback backend."""
 
@@ -122,7 +129,7 @@ class LocalInference:
             method="POST",
         )
         try:
-            with urlopen(request, timeout=self.timeout) as response:
+            with build_opener(_NoRedirect).open(request, timeout=self.timeout) as response:
                 pending: list[str] = []
                 for raw in response:
                     if len(raw) > 65536:
