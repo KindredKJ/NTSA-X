@@ -169,8 +169,15 @@ class LocalInference:
 class LiveService:
     """Recall before teacher inference; explicit opt-in teacher sample capture."""
 
-    def __init__(self, store: TurnStore, inference: LocalInference, corpus=None):
+    def __init__(self, store: TurnStore, inference: LocalInference | None,
+                 corpus=None, student: LocalInference | None = None,
+                 use_student: bool = False):
+        if use_student and student is None:
+            raise ValueError("Student endpoint required for teacher-free mode")
+        if not use_student and inference is None:
+            raise ValueError("Teacher endpoint required unless student mode is selected")
         self.store, self.inference, self.corpus = store, inference, corpus
+        self.student, self.use_student = student, use_student
         self._lock = Lock()
         self._active: set[str] = set()
         self._results: dict[str, dict] = {}
@@ -196,11 +203,13 @@ class LiveService:
             history = self.store.history(session_id)
             cached = (self.corpus.recall(session_id, user, history)
                       if self.corpus else None)
-            source = "approved-recall" if cached is not None else "teacher"
+            source = ("approved-recall" if cached is not None else
+                      ("student" if self.use_student else "teacher"))
+            engine = self.student if self.use_student else self.inference
             messages = [{"role": "system", "content": SYSTEM_MESSAGE}]
             messages.extend(history)
             messages.append({"role": "user", "content": user})
-            stream = [cached] if cached is not None else self.inference.stream(messages)
+            stream = [cached] if cached is not None else engine.stream(messages)
             output: list[str] = []
             length = 0
             for chunk in stream:
@@ -219,7 +228,7 @@ class LiveService:
             if capture_for_learning and self.corpus and source == "teacher":
                 # Never treat collection failure as a verified answer.
                 sample = self.corpus.capture(
-                    session_id, user, answer, history, self.inference.model)
+                    session_id, user, answer, history, engine.model)
             with self._lock:
                 self._results[session_id] = {
                     "saved": True, "verified": False, "source": source,
@@ -370,15 +379,28 @@ def main() -> None:
     parser.add_argument("--db", default=str(Path.home() / ".kindred" / "ntsa-live.sqlite3"))
     parser.add_argument("--corpus-db",
                         default=str(Path.home() / ".kindred" / "ntsa-learning.sqlite3"))
-    parser.add_argument("--model", required=True,
-                        help="Exact model ID hosted by your local OpenAI-compatible server")
+    parser.add_argument("--model",
+                        help="Teacher model ID hosted by your local OpenAI-compatible server")
+    parser.add_argument("--student-model",
+                        help="Local student model ID; evaluated and licensed separately")
+    parser.add_argument("--student-endpoint",
+                        default="http://127.0.0.1:8081/v1/chat/completions")
+    parser.add_argument("--use-student", action="store_true",
+                        help="Manually select student; never calls the teacher")
     parser.add_argument("--endpoint", default="http://127.0.0.1:8080/v1/chat/completions")
     args = parser.parse_args()
     if not 1024 <= args.port <= 65535:
         parser.error("Port must be between 1024 and 65535")
+    if args.use_student and not args.student_model:
+        parser.error("--use-student requires --student-model")
+    if not args.use_student and not args.model:
+        parser.error("Teacher mode requires --model")
     from .learning import LearningCorpus
-    service = LiveService(TurnStore(args.db), LocalInference(args.endpoint, args.model),
-                          LearningCorpus(args.corpus_db))
+    teacher = LocalInference(args.endpoint, args.model) if args.model else None
+    student = (LocalInference(args.student_endpoint, args.student_model)
+               if args.student_model else None)
+    service = LiveService(TurnStore(args.db), teacher, LearningCorpus(args.corpus_db),
+                          student=student, use_student=args.use_student)
     server = ThreadingHTTPServer(
         ("127.0.0.1", args.port), make_handler(service, port=args.port)
     )
