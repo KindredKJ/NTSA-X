@@ -172,6 +172,23 @@ class MissionControllerTests(TestCase):
             with self.assertRaises((ValueError, TypeError)):
                 self.controller.review(bad)
 
+    def test_typed_mission_english_router_is_nonexecuting(self):
+        from ntsa_x.agent_mission_intent import propose_mission
+        self.assertEqual(
+            propose_mission("audit repository")["goal"], "repository.audit")
+        self.assertEqual(
+            propose_mission("inspect code src.py for square")["inputs"],
+            {"path": "src.py", "term": "square"})
+        self.assertTrue(
+            propose_mission("research browser https://docs.python.org/3/")[
+                "inputs"]["browser_fallback"])
+        self.assertEqual(
+            propose_mission("diagnose tests")["goal"], "tests.diagnose")
+        for bad in ("deploy to production", "email all my contacts",
+                    "delete logs", "write and run powershell"):
+            with self.assertRaises(WorkbenchError):
+                propose_mission(bad)
+
     def test_goal_digest_binds_workspace_and_approved_hosts(self):
         task = mission("repository.audit")
         a = self.controller.review(task)["mission_sha256"]
