@@ -126,6 +126,17 @@ The native model is a research-scale starting point. It is not pretrained,
 frontier-benchmarked, or automatically ready to replace a teacher model
 for useful everyday questions. See [Milestone 08 architecture and execution](docs/MILESTONE-08-NATIVE-TRAINABLE-STATE.md).
 
+## Milestone 11 — NTSA-X agent skills workbench
+
+The new **research-grade, local-first agent workbench** adds typed,
+capability-gated source inspection/writes, Git status/diff, fixed Python test
+execution, DevOps config inventory, approved HTTPS text research and optional
+read-only Playwright browser snapshots. Structured 1–20-step plans require an
+exact SHA-256 approval and separate capability enablement for any effect.
+A conservative English phrase router proposes limited commands but **does not
+give the current COG-FU model general language fluency or independent agency**.
+See [Milestone 11 workbench instructions](docs/MILESTONE-11-AGENT-WORKBENCH.md).
+
 ## Milestone 10 — COG-FU native language acquisition
 
 **Implemented research tools:** Train the recurrent cognitive cortex and
