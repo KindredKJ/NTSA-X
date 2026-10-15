@@ -60,8 +60,10 @@ class WorkbenchTests(TestCase):
         self.assertTrue(result["completed"])
         self.assertEqual((self.root / "folder/hello.py").read_text(),
                          "print(1)")
-        with self.assertRaisesRegex(WorkbenchError, "SHA-256"):
-            wb.run(original, execute=True, approve_digest=hash_value)
+        duplicate = wb.run(
+            original, execute=True, approve_digest=hash_value)
+        self.assertFalse(duplicate["completed"])
+        self.assertIn("SHA-256", duplicate["results"][0]["message"])
         new = plan(("workspace.write", {
             "path": "folder/hello.py", "content": "print(3)",
             "expected_sha256": sha256(b"print(1)").hexdigest()}))
