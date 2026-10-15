@@ -23,8 +23,8 @@ def propose(request: str) -> dict:
         "inspect devops": ("devops.inventory", {}),
         "inspect deployment configs": ("devops.inventory", {}),
         "list files": ("workspace.list", {"path": "."}),
-        "run tests": ("python.tests", {"pattern": "test_*.py"}),
-        "run all tests": ("python.tests", {"pattern": "test_*.py"}),
+        "run tests": ("python.tests", {}),
+        "run all tests": ("python.tests", {}),
     }
     if phrase.casefold() in fixed:
         tool, args = fixed[phrase.casefold()]
