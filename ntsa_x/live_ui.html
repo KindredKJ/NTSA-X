@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NTSA-X // Live Laboratory</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(circle at 60% -15%,#173a4e,#071018 54%,#04070c);color:#eef9ff;min-height:100vh}
+main{max-width:880px;margin:auto;padding:34px 18px 55px}
+header{display:flex;align-items:center;justify-content:space-between;gap:20px}
+h1{font-size:clamp(2rem,5vw,3.3rem);line-height:1.08;letter-spacing:-.055em;margin:12px 0}
+h1 span{color:#80e3d3}
+.tag,.hint{color:#8fa9b6;font-size:.85rem}
+.tag{text-transform:uppercase;letter-spacing:.18em}
+.status{border:1px solid #305b66;border-radius:30px;padding:8px 12px;color:#80e3d3;font-size:.78rem}
+p{line-height:1.65}
+.panel{border:1px solid #20424f;background:#0b1822db;border-radius:18px;overflow:hidden;box-shadow:0 30px 80px #0007}
+#log{height:min(54vh,525px);overflow:auto;padding:24px;display:flex;flex-direction:column;gap:18px}
+.message{max-width:85%;padding:14px 17px;border-radius:14px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.55}
+.user{align-self:flex-end;background:#125267;border:1px solid #2b8094}
+.assistant{align-self:flex-start;background:#162634;border:1px solid #2c4857}
+.role{font-size:.66rem;letter-spacing:.13em;color:#a6dbd7;text-transform:uppercase;margin-bottom:7px}
+footer{padding:18px;border-top:1px solid #254354}
+textarea{background:#08151f;border:1px solid #365865;color:#eef9ff;border-radius:10px;padding:12px;font:inherit;resize:vertical;min-height:62px;width:100%;outline-color:#7ce8d4}
+.controls{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-top:10px}
+button{border:1px solid #3c6a78;background:#122a38;color:#d7f9f6;border-radius:9px;padding:10px 14px;cursor:pointer;font-weight:650}
+button.primary{background:#71d9c8;color:#05232a;border-color:#71d9c8}
+button:disabled{opacity:.45;cursor:not-allowed}
+button:hover:not(:disabled){filter:brightness(1.13)}
+label{color:#a3bdc9;font-size:.82rem}
+#info{min-height:20px;color:#8fa9b6;font-size:.82rem;margin-top:10px}
+small{color:#86a5b4}
+</style>
+</head>
+<body>
+<main>
+<header><div class="tag">Kindred Labs · Experimental Runtime</div><div class="status" id="status">Local bridge</div></header>
+<h1>NTSA-X <span>Live.</span></h1>
+<p class="hint">Streaming conversation on a locally hosted inference model, with persistent session history. The existing NTSA-X verified compute kernel is separate; model responses are <strong>not independently verified</strong>.</p>
+<section class="panel">
+<div id="log" role="log" aria-live="polite"></div>
+<footer>
+<textarea id="message" maxlength="4000" aria-label="Message to local model" placeholder="Ask the local model something…" spellcheck="true"></textarea>
+<div class="controls">
+<button id="send" class="primary">Send ↗</button>
+<button id="mic" title="Optional browser speech recognition">🎙 Speak</button>
+<button id="clear" title="Delete all dialogue for this session">Clear session</button>
+<label><input type="checkbox" id="voice"> Read answers aloud</label>
+</div>
+<div id="info">The interface binds to this machine only. Browser speech recognition may use the browser vendor's speech service.</div>
+</footer>
+</section>
+<p class="hint">Research interface • No fabricated proof, autonomous system changes, or external execution • Session data is stored in local SQLite.</p>
+</main>
+<script>
+"use strict";
+const log=document.getElementById("log"),input=document.getElementById("message");
+const send=document.getElementById("send"),mic=document.getElementById("mic");
+const info=document.getElementById("info"),status=document.getElementById("status");
+let busy=false,recognition;
+const key="ntsa_x_live_session_v1";
+let session=localStorage.getItem(key);
+if(!session||!/^[A-Za-z0-9_-]{8,64}$/.test(session)){
+  session=crypto.randomUUID().replaceAll("-","");localStorage.setItem(key,session);
+}
+function bubble(role,text){
+  const box=document.createElement("article");
+  box.className="message "+role;
+  const name=document.createElement("div");name.className="role";
+  name.textContent=role==="user"?"You":"Local inference";
+  const body=document.createElement("div");body.textContent=text;
+  box.append(name,body);log.append(box);log.scrollTop=log.scrollHeight;
+  return body;
+}
+function active(value){
+  busy=value;send.disabled=value;mic.disabled=value||!recognition;
+  input.disabled=value;status.textContent=value?"Streaming…":"Local bridge";
+}
+async function chat(){
+  const message=input.value.trim();if(!message||busy)return;
+  input.value="";bubble("user",message);
+  const body=bubble("assistant","");active(true);info.textContent="Local model generating…";
+  let accumulated="",buffer="",finished=false;
+  try{
+    const response=await fetch("/api/chat",{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({session_id:session,message})});
+    if(!response.ok){const error=await response.json();throw Error(error.error||"Request failed");}
+    const reader=response.body.getReader(),decoder=new TextDecoder();
+    while(true){
+      const {value,done}=await reader.read();
+      if(done)break;
+      buffer+=decoder.decode(value,{stream:true});
+      const frames=buffer.split(/\r?\n\r?\n/);buffer=frames.pop();
+      for(const frame of frames){
+        const kind=(frame.match(/^event:\s*(.+)$/m)||[])[1];
+        const data=(frame.match(/^data:\s*(.+)$/m)||[])[1];
+        if(!kind||!data)continue;
+        const item=JSON.parse(data);
+        if(kind==="delta"){accumulated+=item.text;body.textContent=accumulated;log.scrollTop=log.scrollHeight;}
+        if(kind==="error")throw Error(item.error);
+        if(kind==="done")finished=true;
+      }
+    }
+    if(!finished)throw Error("Streaming connection closed before completion");
+    info.textContent="Saved locally · unverified model response";
+    if(document.getElementById("voice").checked&&window.speechSynthesis){
+      speechSynthesis.cancel();const utterance=new SpeechSynthesisUtterance(accumulated);
+      utterance.rate=1;speechSynthesis.speak(utterance);
+    }
+  }catch(error){
+    body.textContent=(accumulated?accumulated+"\n\n":"")+"⚠ "+error.message;
+    info.textContent="The local model or gateway did not complete the request.";
+  }finally{active(false);input.focus();}
+}
+send.addEventListener("click",chat);
+input.addEventListener("keydown",event=>{
+  if(event.key==="Enter"&&!event.shiftKey){event.preventDefault();chat();}
+});
+document.getElementById("clear").addEventListener("click",async()=>{
+  if(busy||!confirm("Delete this session's stored dialogue?"))return;
+  const response=await fetch("/api/clear",{method:"POST",
+    headers:{"Content-Type":"application/json"},body:JSON.stringify({session_id:session})});
+  if(response.ok){log.replaceChildren();info.textContent="Session deleted from local SQLite.";}
+  else info.textContent="Could not clear session.";
+});
+const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+if(SpeechRecognition){
+  recognition=new SpeechRecognition();recognition.lang=navigator.language||"en-US";
+  recognition.interimResults=false;recognition.continuous=false;
+  mic.addEventListener("click",()=>{if(!busy)recognition.start();});
+  recognition.onresult=event=>{
+    input.value=event.results[0][0].transcript;chat();
+  };
+  recognition.onerror=event=>{info.textContent="Speech recognition: "+event.error;};
+}else{mic.disabled=true;mic.title="Speech recognition not supported in this browser";}
+bubble("assistant","Local gateway ready. Start your inference backend, then send a message.");
+</script>
+</body></html>
