@@ -36,17 +36,13 @@ class MissionControllerTests(TestCase):
         self.assertEqual(report["mode"], "review")
         self.assertEqual(len(report["mission_sha256"]), 64)
         self.assertEqual(len(report["possible_steps"]), 4)
-        with patch.object(self.wb, "dispatch",
-                          wraps=self.wb.dispatch) as dispatch:
-            # git.status doesn't require a git repo to return an exit code,
-            # but fails verification if status was not successful.
-            def controlled(tool, args):
-                if tool == "git.status":
-                    return {"exit_code": 0, "stdout": " M src.py", "stderr": "",
-                            "truncated": False}
-                return dispatch_original(tool, args)
-            dispatch_original = self.wb.dispatch
-            dispatch.side_effect = controlled
+        original = self.wb.dispatch
+        def controlled(tool, args):
+            if tool == "git.status":
+                return {"exit_code": 0, "stdout": " M src.py", "stderr": "",
+                        "truncated": False}
+            return original(tool, args)
+        with patch.object(self.wb, "dispatch", side_effect=controlled):
             response = self.controller.execute(task)
         self.assertEqual(response["status"], "completed")
         self.assertEqual(response["observed_steps"], 4)
