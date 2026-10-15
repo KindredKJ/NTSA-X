@@ -89,6 +89,65 @@ class NativeOrbitTests(TestCase):
         self.assertTrue(all(0<=x<=255 for x in emitted))
         self.assertLessEqual(len(emitted),8)
 
+    def test_native_weights_can_fit_a_repeated_sequence(self):
+        torch=self.torch
+        from ntsa_x.native_model import NativeConfig, NativeOrbitModel
+        torch.manual_seed(17)
+        native=NativeOrbitModel(NativeConfig(width=24,layers=1,max_context=64))
+        optimizer=torch.optim.AdamW(native.parameters(),lr=0.01)
+        ids,targets=self.codec.conversation([
+            {"role":"user","content":"A"},
+            {"role":"assistant","content":"B"}],max_tokens=64)
+        tokens=torch.tensor([ids],dtype=torch.long)
+        labels=torch.tensor([targets],dtype=torch.long)
+        original=float(native.loss(tokens,labels).item())
+        for _ in range(25):
+            optimizer.zero_grad(set_to_none=True)
+            loss=native.loss(tokens,labels)
+            loss.backward()
+            optimizer.step()
+        learned=float(native.loss(tokens,labels).item())
+        self.assertLess(learned,original*0.8)
+
+    def test_native_sse_serves_local_requests(self):
+        import socket
+        from contextlib import closing
+        from http.server import ThreadingHTTPServer
+        from http.client import HTTPConnection
+        from threading import Thread
+        from ntsa_x.native_server import handler_factory
+        with closing(socket.socket()) as s:
+            s.bind(("127.0.0.1",0))
+            port=s.getsockname()[1]
+        server=ThreadingHTTPServer(
+            ("127.0.0.1",port),
+            handler_factory(self.model,"ntsa-native-test",port,4))
+        runner=Thread(target=server.serve_forever,daemon=True)
+        runner.start()
+        try:
+            conn=HTTPConnection("127.0.0.1",port,timeout=5)
+            conn.request("POST","/v1/chat/completions",
+                         body=json.dumps({
+                             "model":"ntsa-native-test","stream":True,
+                             "max_tokens":4,"temperature":0,
+                             "messages":[{"role":"user","content":"hi"}]}),
+                         headers={"Content-Type":"application/json"})
+            response=conn.getresponse()
+            self.assertEqual(response.status,200)
+            self.assertIn("data: [DONE]",
+                          response.read().decode("utf-8"))
+            conn.close()
+            conn=HTTPConnection("127.0.0.1",port,timeout=5)
+            conn.request("GET","/health")
+            response=conn.getresponse()
+            self.assertEqual(response.status,200)
+            self.assertFalse(json.loads(response.read())["teacher_loaded"])
+            conn.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+            runner.join(timeout=5)
+
     def test_training_checkpoint_roundtrip_and_holdout(self):
         from ntsa_x.native_train import train,load_checkpoint
         torch=self.torch
