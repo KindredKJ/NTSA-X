@@ -9,6 +9,8 @@ from unittest.mock import patch
 from http.server import ThreadingHTTPServer
 import json
 import socket
+from io import BytesIO
+from urllib.error import HTTPError
 
 from ntsa_x.live_gateway import (
     GatewayError, LiveService, LocalInference, TurnStore, make_handler,
@@ -134,6 +136,18 @@ class GatewayTests(TestCase):
         with patch("ntsa_x.live_gateway.build_opener", return_value=Opener()):
             self.assertEqual("".join(model.stream([{"role": "user", "content": "hi"}])),
                              "Hi there")
+
+    def test_model_context_rejection_is_not_reported_as_offline(self):
+        model = LocalInference(
+            "http://127.0.0.1:8081/v1/chat/completions", "ntsa-cog-fu-v1")
+        class Rejected:
+            def open(self, *_args, **_kwargs):
+                raise HTTPError(
+                    "http://127.0.0.1:8081/v1/chat/completions",
+                    400, "Bad Request", {}, BytesIO(b'{"error":"context"}'))
+        with patch("ntsa_x.live_gateway.build_opener", return_value=Rejected()):
+            with self.assertRaisesRegex(GatewayError, "context length"):
+                list(model.stream([{"role":"user","content":"hello"}]))
 
     def test_http_stream_and_origin_restrictions(self):
         # Bind a local dynamic port for deterministic, credential-free test traffic.

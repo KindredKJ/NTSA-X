@@ -166,7 +166,15 @@ class LocalInference:
                             raise GatewayError("Invalid inference stream packet") from exc
                 if pending:
                     raise GatewayError("Incomplete inference stream frame")
-        except (HTTPError, URLError, TimeoutError, OSError) as exc:
+        except HTTPError as exc:
+            if exc.code == 400:
+                raise GatewayError(
+                    "Local model rejected the request (check context length and "
+                    "model input limits)") from exc
+            if exc.code == 503:
+                raise GatewayError("Local inference model is busy") from exc
+            raise GatewayError("Local inference model unavailable") from exc
+        except (URLError, TimeoutError, OSError) as exc:
             raise GatewayError("Local inference model unavailable") from exc
 
 
