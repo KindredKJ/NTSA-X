@@ -40,8 +40,8 @@ def cortex_window_loss(cortex: NativeOrbitModel, window: LanguageWindow):
 
 
 def _window_seed(window: LanguageWindow) -> int:
-    digest = sha256(bytes(window.continuation) +
-                    bytes(str(window.prefix), "ascii")).digest()
+    digest = sha256(repr((window.prefix, window.continuation))
+                    .encode("ascii")).digest()
     return int.from_bytes(digest[:4], "big")
 
 
