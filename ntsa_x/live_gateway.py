@@ -183,11 +183,16 @@ class LiveService:
 
     def __init__(self, store: TurnStore, inference: LocalInference | None,
                  corpus=None, student: LocalInference | None = None,
-                 use_student: bool = False):
+                 use_student: bool = False, identity_text: str = ""):
         if use_student and student is None:
             raise ValueError("Student endpoint required for teacher-free mode")
         if not use_student and inference is None:
             raise ValueError("Teacher endpoint required unless student mode is selected")
+        if (not isinstance(identity_text, str) or
+                len(identity_text.encode("utf-8")) > 1200 or
+                "\x00" in identity_text):
+            raise ValueError("Identity description must be at most 1200 UTF-8 bytes")
+        self.identity_text = identity_text
         self.store, self.inference, self.corpus = store, inference, corpus
         self.student, self.use_student = student, use_student
         self._lock = Lock()
@@ -218,7 +223,11 @@ class LiveService:
             source = ("approved-recall" if cached is not None else
                       ("student" if self.use_student else "teacher"))
             engine = self.student if self.use_student else self.inference
-            messages = [{"role": "system", "content": SYSTEM_MESSAGE}]
+            identity = ("\nIdentity card supplied by the local operator "
+                        "(unverified as learned knowledge): " + self.identity_text
+                        if self.identity_text else "")
+            messages = [{"role": "system",
+                         "content": SYSTEM_MESSAGE + identity}]
             messages.extend(history)
             messages.append({"role": "user", "content": user})
             stream = [cached] if cached is not None else engine.stream(messages)
@@ -391,6 +400,9 @@ def main() -> None:
     parser.add_argument("--db", default=str(Path.home() / ".kindred" / "ntsa-live.sqlite3"))
     parser.add_argument("--corpus-db",
                         default=str(Path.home() / ".kindred" / "ntsa-learning.sqlite3"))
+    parser.add_argument("--identity-file",
+                        help="Optional local UTF-8 identity card; operator-authored "
+                             "context only, NOT trained knowledge")
     parser.add_argument("--model",
                         help="Teacher model ID hosted by your local OpenAI-compatible server")
     parser.add_argument("--student-model",
@@ -414,8 +426,18 @@ def main() -> None:
     student = (LocalInference(args.student_endpoint, args.student_model,
                               max_tokens=args.student_max_tokens)
                if args.student_model else None)
+    identity_text = ""
+    if args.identity_file:
+        path = Path(args.identity_file).expanduser().resolve()
+        if not path.is_file() or path.stat().st_size > 1200:
+            parser.error("Identity file must be an existing UTF-8 file <=1200 bytes")
+        try:
+            identity_text = path.read_text(encoding="utf-8-sig").strip()
+        except UnicodeError:
+            parser.error("Identity file must contain valid UTF-8 text")
     service = LiveService(TurnStore(args.db), teacher, LearningCorpus(args.corpus_db),
-                          student=student, use_student=args.use_student)
+                          student=student, use_student=args.use_student,
+                          identity_text=identity_text)
     server = ThreadingHTTPServer(
         ("127.0.0.1", args.port), make_handler(service, port=args.port)
     )
