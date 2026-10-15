@@ -155,6 +155,62 @@ class CogFuTests(TestCase):
                       output=root / "no-model", config=self.config,
                       epochs=1, device="cpu")
 
+    def test_full_live_gateway_prompt_fits_small_checkpoint_server(self):
+        """Regression: the default gateway system message exceeds 128 bytes."""
+        from contextlib import closing
+        from http.server import ThreadingHTTPServer
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from threading import Thread
+        import socket
+        from ntsa_x.cog_fu_server import configure_serving_context
+        from ntsa_x.native_server import handler_factory
+        from ntsa_x.live_gateway import (
+            SYSTEM_MESSAGE, GatewayError, LiveService, LocalInference, TurnStore)
+
+        user_text = "Do You know Who, and what You are?"
+        conversation = [
+            {"role": "system", "content": SYSTEM_MESSAGE},
+            {"role": "user", "content": user_text}]
+        with self.assertRaises(ValueError):
+            self.model.codec.conversation(
+                conversation, generation=True,
+                max_tokens=self.config.max_context)
+        with self.assertRaises(ValueError):
+            configure_serving_context(self.model, 64)
+
+        # No positional embeddings depend on recurrent context limit.
+        self.assertEqual(configure_serving_context(self.model, 1024), 1024)
+        self.assertEqual(self.model.cortex.config.max_context, 1024)
+        with self.torch.no_grad():
+            self.model.diffusion_head.weight.zero_()
+            self.model.diffusion_head.bias.fill_(-10)
+            self.model.diffusion_head.bias[ord("a")] = 10
+        with closing(socket.socket()) as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+        server = ThreadingHTTPServer(
+            ("127.0.0.1", port),
+            handler_factory(self.model, "ntsa-cog-fu-test", port, 7))
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with TemporaryDirectory() as tmp:
+                client = LocalInference(
+                    f"http://127.0.0.1:{port}/v1/chat/completions",
+                    "ntsa-cog-fu-test", max_tokens=7, timeout=30)
+                service = LiveService(
+                    TurnStore(Path(tmp) / "dialogue.sqlite3"), None,
+                    student=client, use_student=True)
+                answer = "".join(service.stream("session_0001", user_text))
+                self.assertEqual(answer, "aaaaaaa")
+                self.assertEqual(
+                    service.last_result("session_0001")["source"], "student")
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=5)
+
     def test_existing_local_sse_server_works(self):
         from contextlib import closing
         from http.client import HTTPConnection
