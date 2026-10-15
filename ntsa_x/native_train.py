@@ -12,6 +12,7 @@ import json
 import math
 import os
 import random
+import hashlib
 import torch
 from torch import nn
 from ntsa_x.native_model import ByteCodec, NativeConfig, NativeOrbitModel
@@ -66,7 +67,8 @@ def evaluate(model,rows,batch_size,device):
 
 def train(*,train_path,eval_path,output,width=96,layers=2,
           max_context=1024,epochs=4,batch_size=4,lr=0.001,
-          gradient_clip=1.0,seed=42,device="auto"):
+          gradient_clip=1.0,seed=42,device="auto",
+          initialize_from=None,replay_path=None):
     if (not 1<=epochs<=100 or not 1<=batch_size<=128 or not 1e-7<=lr<=0.05
             or not 0.01<=gradient_clip<=100):
         raise ValueError("Invalid training hyperparameters")
@@ -82,6 +84,10 @@ def train(*,train_path,eval_path,output,width=96,layers=2,
     config=NativeConfig(width=width,layers=layers,max_context=max_context)
     codec=ByteCodec()
     training=read_examples(train_path,codec,max_context)
+    replay=[]
+    if replay_path is not None:
+        replay=read_examples(replay_path,codec,max_context)
+        training.extend(replay)
     evaluation=read_examples(eval_path,codec,max_context)
     train_prompts={item[2] for item in training}
     eval_prompts={item[2] for item in evaluation}
@@ -89,12 +95,21 @@ def train(*,train_path,eval_path,output,width=96,layers=2,
         raise ValueError("Training and evaluation share exact user prompts")
     random.seed(seed)
     torch.manual_seed(seed)
-    model=NativeOrbitModel(config).to(location)
+    parent_digest=None
+    if initialize_from is not None:
+        prior=Path(initialize_from).expanduser().resolve()
+        model=load_checkpoint(prior,device=location)
+        if model.config!=config:
+            raise ValueError("Previous checkpoint configuration does not match")
+        parent_digest=hashlib.sha256((prior/"weights.pt").read_bytes()).hexdigest()
+    else:
+        model=NativeOrbitModel(config).to(location)
     optimizer=torch.optim.AdamW(model.parameters(),lr=lr,weight_decay=0.01)
     before=evaluate(model,evaluation,batch_size,location)
     history=[]
-    best=float("inf")
-    best_weights=None
+    best=before
+    best_weights={k:v.detach().cpu().clone()
+                  for k,v in model.state_dict().items()}
     steps=0
     for epoch in range(epochs):
         model.train()
@@ -128,6 +143,9 @@ def train(*,train_path,eval_path,output,width=96,layers=2,
         "trainable_parameters":sum(p.numel() for p in model.parameters()
                                    if p.requires_grad),
         "train_examples":len(training),"heldout_examples":len(evaluation),
+        "rehearsal_examples":len(replay),
+        "previous_checkpoint_sha256":parent_digest,
+        "heldout_improved":best < before,
         "optimizer_steps":steps,"device":location,"seed":seed,
         "before_heldout_loss":before,"best_heldout_loss":best,
         "best_heldout_perplexity":math.exp(min(best,50)),
@@ -171,12 +189,17 @@ def main():
     parser.add_argument("--lr",type=float,default=0.001)
     parser.add_argument("--seed",type=int,default=42)
     parser.add_argument("--device",choices=["auto","cpu","cuda"],default="auto")
+    parser.add_argument("--initialize-from",
+                        help="Load existing native model weights for continued training")
+    parser.add_argument("--replay",
+                        help="Optional previously approved JSONL rehearsal dataset")
     args=parser.parse_args()
     print(json.dumps(train(train_path=args.train,eval_path=args.eval,
                            output=args.output,width=args.width,layers=args.layers,
                            max_context=args.max_context,epochs=args.epochs,
                            batch_size=args.batch_size,lr=args.lr,seed=args.seed,
-                           device=args.device),indent=2))
+                           device=args.device,initialize_from=args.initialize_from,
+                           replay_path=args.replay),indent=2))
 
 
 if __name__=="__main__":
