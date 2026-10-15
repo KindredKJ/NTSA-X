@@ -58,7 +58,13 @@ class MissionControllerTests(TestCase):
 
     def test_code_inspect_contains_multiple_steps_without_planning_from_text(self):
         task = mission("code.inspect", path="src.py", term="square")
-        response = self.controller.execute(task)
+        original = self.wb.dispatch
+        def fake_diff(tool, args):
+            if tool == "git.diff":
+                return {"exit_code": 0, "stdout": "", "stderr": ""}
+            return original(tool, args)
+        with patch.object(self.wb, "dispatch", side_effect=fake_diff):
+            response = self.controller.execute(task)
         self.assertEqual(response["status"], "completed")
         self.assertEqual([x["tool"] for x in response["steps"]],
                          ["workspace.read", "git.diff", "workspace.search"])
@@ -142,6 +148,7 @@ class MissionControllerTests(TestCase):
         self.assertEqual(output["steps"][-1]["tool"], "python.tests")
         self.assertEqual(output["steps"][-1]["status"], "failed")
         self.assertEqual(output["steps"][-1]["observation"]["exit_code"], 1)
+        self.assertIn("No automatic edits", output["recommended_recovery"])
 
     def test_whole_mission_prevalidated_before_dispatch(self):
         bad = mission("code.inspect", path="../private.txt", term="unsafe")
