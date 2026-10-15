@@ -152,27 +152,30 @@ class NativeOrbitModel(nn.Module):
         return F.cross_entropy(logits[:,:-1].reshape(-1,self.config.vocab_size),
                                gold,ignore_index=-100)
 
-    @torch.inference_mode()
     def generate(self,prefix:list[int],*,max_new_tokens=128,
                  temperature=0.0) -> Iterator[int]:
+        """Yield byte tokens from cached state, without building autograd graphs."""
         if not prefix or len(prefix)>self.config.max_context or not 1<=max_new_tokens<=4096 or not 0<=temperature<=2:
             raise ValueError("Invalid generation input")
         self.eval()
-        first=torch.tensor([prefix],dtype=torch.long,device=self.embedding.weight.device)
-        logits,state=self.forward(first)
-        scores=logits[:,-1,:]
-        for _ in range(max_new_tokens):
-            scores=scores.clone()
-            scores[:,[ByteCodec.PAD,ByteCodec.BOS,ByteCodec.USER,
-                      ByteCodec.ASSISTANT,ByteCodec.SYSTEM]]=-torch.inf
-            token=(scores.argmax(-1) if temperature==0 else
-                   torch.multinomial(F.softmax(scores/temperature,-1),1).squeeze(-1))
-            item=int(token.item())
-            if item==ByteCodec.EOS:
-                break
-            yield item
-            logits,state=self.forward(token.view(1,1),state)
+        # Context MUST be inside the iterator body, not on a decorator:
+        # decorating a generator does not cover deferred next() execution.
+        with torch.inference_mode():
+            first=torch.tensor([prefix],dtype=torch.long,device=self.embedding.weight.device)
+            logits,state=self.forward(first)
             scores=logits[:,-1,:]
+            for _ in range(max_new_tokens):
+                scores=scores.clone()
+                scores[:,[ByteCodec.PAD,ByteCodec.BOS,ByteCodec.USER,
+                          ByteCodec.ASSISTANT,ByteCodec.SYSTEM]]=-torch.inf
+                token=(scores.argmax(-1) if temperature==0 else
+                       torch.multinomial(F.softmax(scores/temperature,-1),1).squeeze(-1))
+                item=int(token.item())
+                if item==ByteCodec.EOS:
+                    break
+                yield item
+                logits,state=self.forward(token.view(1,1),state)
+                scores=logits[:,-1,:]
 
 
 def utf8_stream(tokens: Iterator[int]) -> Iterator[str]:
