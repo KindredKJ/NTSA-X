@@ -167,27 +167,43 @@ class LocalInference:
 
 
 class LiveService:
-    def __init__(self, store: TurnStore, inference: LocalInference):
-        self.store, self.inference = store, inference
+    """Recall before teacher inference; explicit opt-in teacher sample capture."""
+
+    def __init__(self, store: TurnStore, inference: LocalInference, corpus=None):
+        self.store, self.inference, self.corpus = store, inference, corpus
         self._lock = Lock()
         self._active: set[str] = set()
+        self._results: dict[str, dict] = {}
 
-    def stream(self, session_id: str, user: str) -> Iterator[str]:
+    def last_result(self, session_id: str) -> dict:
+        with self._lock:
+            return dict(self._results.get(session_id, {}))
+
+    def stream(self, session_id: str, user: str, *,
+               capture_for_learning: bool = False) -> Iterator[str]:
         valid_session(session_id)
         if not isinstance(user, str) or not 1 <= len(user.strip()) <= MAX_INPUT:
             raise GatewayError("Message must contain 1–4000 characters")
+        if type(capture_for_learning) is not bool:
+            raise GatewayError("Invalid learning consent field")
         user = user.strip()
         with self._lock:
             if session_id in self._active:
                 raise GatewayError("This session already has an active response")
             self._active.add(session_id)
+            self._results.pop(session_id, None)
         try:
+            history = self.store.history(session_id)
+            cached = (self.corpus.recall(session_id, user, history)
+                      if self.corpus else None)
+            source = "approved-recall" if cached is not None else "teacher"
             messages = [{"role": "system", "content": SYSTEM_MESSAGE}]
-            messages.extend(self.store.history(session_id))
+            messages.extend(history)
             messages.append({"role": "user", "content": user})
+            stream = [cached] if cached is not None else self.inference.stream(messages)
             output: list[str] = []
             length = 0
-            for chunk in self.inference.stream(messages):
+            for chunk in stream:
                 if not isinstance(chunk, str):
                     raise GatewayError("Invalid inference output")
                 length += len(chunk)
@@ -197,7 +213,17 @@ class LiveService:
                 yield chunk
             if not output:
                 raise GatewayError("Inference returned an empty reply")
-            self.store.commit_turn(session_id, user, "".join(output))
+            answer = "".join(output)
+            self.store.commit_turn(session_id, user, answer)
+            sample = None
+            if capture_for_learning and self.corpus and source == "teacher":
+                # Never treat collection failure as a verified answer.
+                sample = self.corpus.capture(
+                    session_id, user, answer, history, self.inference.model)
+            with self._lock:
+                self._results[session_id] = {
+                    "saved": True, "verified": False, "source": source,
+                    "sample_id": sample}
         finally:
             with self._lock:
                 self._active.discard(session_id)
@@ -274,14 +300,33 @@ def make_handler(service: LiveService, *, port: int):
             try:
                 body = self._body()
                 if self.path == "/api/clear":
-                    service.store.clear(valid_session(body.get("session_id")))
+                    session_id = valid_session(body.get("session_id"))
+                    with service._lock:
+                        if session_id in service._active:
+                            raise GatewayError("Cannot clear an active session")
+                    service.store.clear(session_id)
+                    if service.corpus:
+                        service.corpus.clear(session_id)
                     self._json(200, {"cleared": True})
+                    return
+                if self.path == "/api/approve":
+                    if service.corpus is None:
+                        raise GatewayError("Learning corpus is disabled")
+                    accepted = service.corpus.approve(
+                        valid_session(body.get("session_id")),
+                        body.get("sample_id"), body.get("rights_confirmed"),
+                        share=body.get("share", False))
+                    self._json(200 if accepted else 404,
+                               {"approved": accepted, "verified": False})
                     return
                 if self.path != "/api/chat":
                     self._json(404, {"error": "Not found"})
                     return
                 session = valid_session(body.get("session_id"))
                 user = body.get("message")
+                learn = body.get("learn", False)
+                if type(learn) is not bool:
+                    raise GatewayError("Invalid learning consent")
                 if not isinstance(user, str) or not 1 <= len(user.strip()) <= MAX_INPUT:
                     raise GatewayError("Message must contain 1–4000 characters")
             except GatewayError as exc:
@@ -296,9 +341,9 @@ def make_handler(service: LiveService, *, port: int):
             self.end_headers()
             self.close_connection = True
             try:
-                for token in service.stream(session, user):
+                for token in service.stream(session, user, capture_for_learning=learn):
                     self._event("delta", {"text": token})
-                self._event("done", {"saved": True, "verified": False})
+                self._event("done", service.last_result(session))
             except GatewayError as exc:
                 self._event("error", {"error": str(exc)})
             except (OSError, BrokenPipeError, ConnectionResetError):
@@ -323,13 +368,17 @@ def main() -> None:
     parser = ArgumentParser(description="NTSA-X local streaming conversation bridge")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--db", default=str(Path.home() / ".kindred" / "ntsa-live.sqlite3"))
+    parser.add_argument("--corpus-db",
+                        default=str(Path.home() / ".kindred" / "ntsa-learning.sqlite3"))
     parser.add_argument("--model", required=True,
                         help="Exact model ID hosted by your local OpenAI-compatible server")
     parser.add_argument("--endpoint", default="http://127.0.0.1:8080/v1/chat/completions")
     args = parser.parse_args()
     if not 1024 <= args.port <= 65535:
         parser.error("Port must be between 1024 and 65535")
-    service = LiveService(TurnStore(args.db), LocalInference(args.endpoint, args.model))
+    from .learning import LearningCorpus
+    service = LiveService(TurnStore(args.db), LocalInference(args.endpoint, args.model),
+                          LearningCorpus(args.corpus_db))
     server = ThreadingHTTPServer(
         ("127.0.0.1", args.port), make_handler(service, port=args.port)
     )
