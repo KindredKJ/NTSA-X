@@ -49,8 +49,7 @@ def _last_chars_under_budget(text: str, budget: int) -> str:
     return "".join(reversed(result))
 
 
-def build_windows(text: str, digest: str, config: CogFuConfig,
-                  *, context_chars: int | None = None) -> list[LanguageWindow]:
+def build_windows(text: str, digest: str, config: CogFuConfig) -> list[LanguageWindow]:
     if not isinstance(text, str) or not text.strip():
         raise ValueError("Document must contain readable text")
     # Need at least one context byte, with a byte to be predicted.
@@ -60,9 +59,9 @@ def build_windows(text: str, digest: str, config: CogFuConfig,
     prefix_budget = config.max_context - answer_budget - 1
     chunks = _segments(text, answer_budget)
     output = []
-    seen = ""
+    rolling_context = ""
     for index, chunk in enumerate(chunks):
-        prior = _last_chars_under_budget(seen, prefix_budget)
+        prior = _last_chars_under_budget(rolling_context, prefix_budget)
         prefix = (ByteCodec.BOS, *prior.encode("utf-8"))
         answer = (*chunk.encode("utf-8"),)
         if index == len(chunks) - 1 and len(answer) < config.max_answer:
@@ -70,7 +69,8 @@ def build_windows(text: str, digest: str, config: CogFuConfig,
         if len(prefix) + len(answer) > config.max_context:
             raise RuntimeError("Internal window construction overflow")
         output.append(LanguageWindow(prefix, answer, digest))
-        seen += chunk
+        rolling_context = _last_chars_under_budget(
+            prior + chunk, prefix_budget)
     return output
 
 
