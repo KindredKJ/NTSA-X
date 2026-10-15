@@ -100,8 +100,15 @@ class CogFuModel(nn.Module):
         self.diffusion_head = nn.Linear(config.width, MASK_ID)
         self.codec = ByteCodec()
 
+    def cognitive_context(self, prefix: Tensor) -> Tensor:
+        """Encode a prompt ONCE into cross-conditioned recurrent X/Y/Z state."""
+        _, states = self.cortex(prefix)
+        joined = torch.cat([lane.flatten(1) for lane in states], dim=-1)
+        return self.context_projection(joined)
+
     def denoise_logits(self, prefix: Tensor, noisy: Tensor,
-                       noise_level: Tensor) -> Tensor:
+                       noise_level: Tensor, *,
+                       cached_context: Tensor | None = None) -> Tensor:
         if (prefix.ndim != 2 or noisy.ndim != 2
                 or prefix.shape[0] != noisy.shape[0]
                 or prefix.dtype != torch.long or noisy.dtype != torch.long
@@ -111,9 +118,10 @@ class CogFuModel(nn.Module):
             raise ValueError("Invalid COG-FU conditioning shapes")
         if bool(torch.any((noise_level < 0) | (noise_level > 1)).item()):
             raise ValueError("Noise levels must be in [0,1]")
-        _, states = self.cortex(prefix)
-        state = torch.cat([lane.flatten(1) for lane in states], dim=-1)
-        context = self.context_projection(state)
+        context = (self.cognitive_context(prefix) if cached_context is None
+                   else cached_context)
+        if context.shape != (prefix.shape[0], self.config.width):
+            raise ValueError("Invalid cached cognitive state")
         positions = torch.arange(noisy.shape[1], device=noisy.device)
         x = (self.noisy_embedding(noisy)
              + self.position_embedding(positions)[None, :, :]
@@ -187,6 +195,7 @@ class CogFuModel(nn.Module):
             prompt = torch.tensor([prefix], dtype=torch.long, device=device)
             draft = torch.full((1, max_new_tokens), MASK_ID,
                                device=device, dtype=torch.long)
+            cached_context = self.cognitive_context(prompt)
             for step in range(count):
                 remaining = draft.eq(MASK_ID)
                 n_remain = int(remaining.sum().item())
@@ -194,7 +203,8 @@ class CogFuModel(nn.Module):
                     break
                 fraction = n_remain / max_new_tokens
                 t = torch.tensor([fraction], device=device)
-                logits = self.denoise_logits(prompt, draft, t).clone()
+                logits = self.denoise_logits(
+                    prompt, draft, t, cached_context=cached_context).clone()
                 # Only raw UTF-8 bytes and EOS are legal response tokens.
                 logits[:, :, [ByteCodec.PAD, ByteCodec.BOS, ByteCodec.USER,
                               ByteCodec.ASSISTANT, ByteCodec.SYSTEM]] = -torch.inf
