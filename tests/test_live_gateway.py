@@ -127,7 +127,11 @@ class GatewayTests(TestCase):
 
         model = LocalInference(
             "http://127.0.0.1:8080/v1/chat/completions", "real-model")
-        with patch("ntsa_x.live_gateway.urlopen", return_value=Stream()):
+        class Opener:
+            def open(self, *_args, **_kwargs):
+                return Stream()
+
+        with patch("ntsa_x.live_gateway.build_opener", return_value=Opener()):
             self.assertEqual("".join(model.stream([{"role": "user", "content": "hi"}])),
                              "Hi there")
 
