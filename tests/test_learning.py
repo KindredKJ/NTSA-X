@@ -76,6 +76,24 @@ class LearningTests(TestCase):
             list(service.stream("session_0001", "test prompt",
                                 capture_for_learning="yes"))
 
+    def test_student_mode_makes_zero_teacher_calls_and_never_captures_student(self):
+        teacher = InstrumentedTeacher()
+        student = InstrumentedTeacher()
+        student.model = "independent-student"
+        service = LiveService(self.store, teacher, self.corpus,
+                              student=student, use_student=True)
+        self.assertEqual("".join(service.stream(
+            "session_0001", "independent", capture_for_learning=True)),
+            "A reviewed example")
+        self.assertEqual(teacher.calls, 0)
+        self.assertEqual(student.calls, 1)
+        self.assertEqual(service.last_result("session_0001")["source"], "student")
+        self.assertIsNone(service.last_result("session_0001")["sample_id"])
+        with self.corpus.connect() as conn:
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM samples").fetchone()[0], 0)
+        with self.assertRaises(ValueError):
+            LiveService(self.store, None, self.corpus, use_student=True)
+
     def test_human_review_cannot_change_or_overwrite_sample(self):
         sample = self.corpus.capture("session_0001", "prompt", "answer", [], "teacher")
         self.assertTrue(self.corpus.approve("session_0001", sample, True))
