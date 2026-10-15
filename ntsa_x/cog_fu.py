@@ -174,6 +174,53 @@ class CogFuModel(nn.Module):
         return {"loss": loss, "cognitive_loss": cognitive_loss,
                 "diffusion_loss": diffusion_loss}
 
+    def language_loss(self, prefix: list[int], continuation: list[int], *,
+                      noise_fraction: float = 0.5,
+                      seed: int | None = None) -> dict[str, Tensor]:
+        """Self-supervised causal + masked reconstruction of authorized text.
+
+        The recurrent objective predicts continuation bytes from the preceding
+        text; the denoiser reconstructs ONLY masked positions, conditioned on
+        the recurrent prefix state. No assistant answer or external teacher is
+        required. The next-byte target is shifted to prevent future leakage.
+        """
+        if (not 1 <= len(prefix) or not 1 <= len(continuation)
+                or len(continuation) > self.config.max_answer
+                or len(prefix) + len(continuation) > self.config.max_context
+                or any(not 0 <= b < 262 for b in prefix)
+                or any(not 0 <= b < 262 for b in continuation)
+                or not 0 < noise_fraction <= 1):
+            raise ValueError("Invalid language pretraining window")
+        device = self.cortex.embedding.weight.device
+        raw = torch.tensor([prefix + continuation], device=device,
+                           dtype=torch.long)
+        # A position predicts the *next* byte; only continuation targets count.
+        ar_logits, _ = self.cortex(raw)
+        predicted = ar_logits[:, len(prefix) - 1:-1]
+        expected = raw[:, len(prefix):]
+        recurrent_loss = F.cross_entropy(
+            predicted.reshape(-1, self.cortex.config.vocab_size),
+            expected.reshape(-1))
+        clean = torch.tensor([continuation], device=device, dtype=torch.long)
+        generator = torch.Generator(device=device)
+        if seed is None:
+            seed = int(torch.randint(0, 2**31 - 1, (1,)).item())
+        generator.manual_seed(seed)
+        mask = torch.rand(clean.shape, generator=generator,
+                          device=device) < noise_fraction
+        if not bool(mask.any().item()):
+            mask[0, 0] = True
+        noisy = clean.masked_fill(mask, MASK_ID)
+        context = torch.tensor([prefix], device=device, dtype=torch.long)
+        t = torch.tensor([noise_fraction], device=device)
+        diffusion_logits = self.denoise_logits(context, noisy, t)
+        diffusion_loss = F.cross_entropy(diffusion_logits[mask], clean[mask])
+        return {
+            "loss": recurrent_loss + self.config.diffusion_weight * diffusion_loss,
+            "cognitive_loss": recurrent_loss,
+            "diffusion_loss": diffusion_loss,
+        }
+
     def draft(self, prefix: list[int], *, max_new_tokens: int = 128,
               temperature: float = 0.0, steps: int | None = None) -> list[int]:
         """Iteratively reveal highest-confidence masked bytes, no teacher calls.
@@ -239,5 +286,10 @@ class CogFuModel(nn.Module):
                  temperature=0.0) -> Iterator[int]:
         # Match the native_server generator contract. Denoising is full-window;
         # actual bytes are emitted AFTER iterative refinement completes.
-        yield from self.draft(prefix, max_new_tokens=max_new_tokens,
-                              temperature=temperature)
+        # Absorbing-mask decoding can place partial/illegal UTF-8 sequences
+        # in any slot. Sanitize AFTER refinement but BEFORE streaming. This
+        # only guarantees valid wire text, not grammatical/semantic quality.
+        raw = bytes(self.draft(prefix, max_new_tokens=max_new_tokens,
+                               temperature=temperature))
+        repaired = raw.decode("utf-8", errors="replace").replace("\ufffd", "?")
+        yield from repaired.encode("utf-8")
