@@ -48,6 +48,12 @@ def main():
                         help="Attach trusted fixed-function scalar worker inside cognition")
     parser.add_argument("--readonly-workspace",
                         help="Attach only read-only workbench extension")
+    parser.add_argument("--enable-web-recall", action="store_true",
+                        help="Opt into browser-backed web research for explicit search intents")
+    parser.add_argument("--web-search-port", type=int, default=8888,
+                        help="Local SearXNG browser front-end port")
+    parser.add_argument("--web-source-host", action="append", default=[],
+                        help="Optional exact public HTTPS source host allowlist")
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
     parser.add_argument("--context-limit", type=int,
                         help="Serving-only recurrent input cap, default >=1024. "
