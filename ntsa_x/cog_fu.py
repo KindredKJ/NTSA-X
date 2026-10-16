@@ -99,6 +99,9 @@ class CogFuModel(nn.Module):
         self.final_norm = nn.LayerNorm(config.width)
         self.diffusion_head = nn.Linear(config.width, MASK_ID)
         self.codec = ByteCodec()
+        # Serving-only choice, not stored in checkpoint. Compare the causal
+        # cortex against diffusion without retraining or changing weights.
+        self.inference_decoder = "diffusion"
 
     def cognitive_context(self, prefix: Tensor) -> Tensor:
         """Encode a prompt ONCE into cross-conditioned recurrent X/Y/Z state."""
@@ -289,7 +292,18 @@ class CogFuModel(nn.Module):
         # Absorbing-mask decoding can place partial/illegal UTF-8 sequences
         # in any slot. Sanitize AFTER refinement but BEFORE streaming. This
         # only guarantees valid wire text, not grammatical/semantic quality.
-        raw = bytes(self.draft(prefix, max_new_tokens=max_new_tokens,
-                               temperature=temperature))
+        decoder = self.inference_decoder
+        if decoder == "diffusion":
+            raw = bytes(self.draft(prefix, max_new_tokens=max_new_tokens,
+                                   temperature=temperature))
+        elif decoder == "cortex":
+            # The pretrained recurrent head predicts the next byte. This
+            # provides a meaningful decoding ablation, NOT fluent chat:
+            # source text pretraining did not teach assistant-turn framing.
+            raw = bytes(self.cortex.generate(
+                prefix, max_new_tokens=max_new_tokens,
+                temperature=temperature))
+        else:
+            raise ValueError("Unknown COG-FU inference decoder")
         repaired = raw.decode("utf-8", errors="replace").replace("\ufffd", "?")
         yield from repaired.encode("utf-8")
