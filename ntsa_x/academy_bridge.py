@@ -11,7 +11,6 @@ from pathlib import Path
 import json
 
 from .academy import LESSONS, audit_lessons
-from .native_model import ByteCodec
 
 
 def _expected_records() -> list[dict]:
@@ -54,11 +53,11 @@ def plan(source_dir: str | Path, checkpoint_dir: str | Path) -> dict:
         raise ValueError("Invalid Academy export or checkpoint configuration") from exc
     if rows != _expected_records():
         raise ValueError("Academy export differs from reviewed original lessons")
-    codec = ByteCodec()
     counts, answer_lengths = [], []
     for row in rows:
-        seq, _ = codec.conversation(row["messages"], max_tokens=32768)
-        counts.append(len(seq))
+        # ByteCodec conversation framing: 1 BOS plus role/EOS per turn.
+        counts.append(1 + sum(2 + len(m["content"].encode("utf-8"))
+                              for m in row["messages"]))
         answer_lengths.append(
             len(row["messages"][-1]["content"].encode("utf-8")) + 1)
     needed = max(counts)
