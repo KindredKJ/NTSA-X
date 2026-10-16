@@ -49,7 +49,7 @@ class WebRecallTests(TestCase):
 
     def test_research_fetched_sources_not_claimed_verified(self):
         browser = BrowserWebRecall(max_pages=2)
-        browser.search = lambda _q: [
+        browser.search = lambda _q, **_kw: [
             SearchHit("Alpha", "https://example.org/a", "a"),
             SearchHit("Beta", "https://example.com/b", "b")]
         with patch("ntsa_x.web_recall.fetch_text", side_effect=[
@@ -76,7 +76,7 @@ class WebRecallTests(TestCase):
 
     def test_web_sources_enter_shared_state_not_model_weights(self):
         class FixedBrowser:
-            def context(self, _query):
+            def context(self, _query, *, max_bytes=1200):
                 return "[1] Public evidence https://example.org/a (retrieved now)"
         model = DummyModel()
         engine = UnifiedCognitiveMechanism(
