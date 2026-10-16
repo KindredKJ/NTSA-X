@@ -13,10 +13,7 @@ from pathlib import Path
 import json
 import math
 
-from .cog_fu_server import configure_serving_context
-from .cog_fu_train import load_checkpoint
 from .live_gateway import SYSTEM_MESSAGE
-from .native_model import ByteCodec
 
 
 def generation_metrics(text: str) -> dict:
@@ -69,6 +66,11 @@ def diagnose(*, checkpoint: str | Path, prompt: str,
         raise ValueError("Unknown prompt framing")
     if device not in {"cpu", "cuda"}:
         raise ValueError("Unsupported compute device")
+    # Keep simple metrics importable when optional PyTorch is not installed.
+    from .cog_fu_server import configure_serving_context
+    from .cog_fu_train import load_checkpoint
+    from .native_model import ByteCodec
+
     model = load_checkpoint(checkpoint, device=device)
     configure_serving_context(model, context_limit)
     if not 1 <= max_new_tokens <= model.config.max_answer:
