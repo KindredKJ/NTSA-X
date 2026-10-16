@@ -100,6 +100,13 @@ def main():
             extensions.append(scalar_extension())
         if args.readonly_workspace:
             extensions.append(workspace_extension(Workbench(args.readonly_workspace)))
+        if args.enable_web_recall:
+            from .web_recall import BrowserWebRecall
+            from .unified_cognition import web_recall_extension
+            web_recall = BrowserWebRecall(
+                search_port=args.web_search_port,
+                allowed_source_hosts=tuple(args.web_source_host))
+            extensions.append(web_recall_extension(web_recall))
         model = UnifiedCognitiveMechanism(
             model, memory=memory, extensions=tuple(extensions),
             persist_episodes=args.persist_episodes)
