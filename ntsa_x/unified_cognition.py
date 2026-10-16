@@ -21,6 +21,7 @@ class CognitiveFrame:
     request: str
     recalled: tuple[MemoryRecord, ...]
     session: str
+    context_budget: int = 1200
 
 
 @dataclass(frozen=True)
@@ -92,6 +93,25 @@ def workspace_extension(workbench) -> NativeExtension:
             value["matches"], ensure_ascii=False)[:1200]
 
     return NativeExtension("workspace.native", supports, contribute)
+
+def web_recall_extension(browser_recall) -> NativeExtension:
+    """Opt-in fresh-source recall without adding any model layers.
+
+    Browser searches occur only for explicit web-search language or a few
+    news-freshness phrases. Retrieved text remains untrusted observation.
+    """
+    from .web_recall import query_for_web
+
+    def supports(request: str) -> bool:
+        return query_for_web(request) is not None
+
+    def contribute(frame: CognitiveFrame) -> str:
+        query = query_for_web(frame.request)
+        if query is None:
+            return ""
+        return browser_recall.context(query, max_bytes=frame.context_budget)
+
+    return NativeExtension("web.recall.native", supports, contribute)
 
 
 class UnifiedCognitiveMechanism:
@@ -171,7 +191,9 @@ class UnifiedCognitiveMechanism:
         start, query = self._request(prefix)
         recalled = self.memory.recall(
             query, session=self.session, limit=5) if self.memory else []
-        frame = CognitiveFrame(query, tuple(recalled), self.session)
+        frame = CognitiveFrame(
+            query, tuple(recalled), self.session,
+            max(0, min(1300, self.config.max_context - len(prefix) - 150)))
         notes = []
         for record in recalled:
             # No record is treated as externally verified fact.
@@ -214,7 +236,17 @@ class UnifiedCognitiveMechanism:
                 source="unified-cognition:unverified-output",
                 session=self.session, ttl_seconds=30 * 86400)
             committed = True
+        consulted_sources = []
+        if "web.recall.native" in contributions:
+            for note in accepted:
+                if "[Extension web.recall.native," in note:
+                    consulted_sources.extend(
+                        url for _index, url in re.findall(
+                            r"(?m)^\[(\d+)\] [^\n|]{1,90} \| (https://[^\s|]+) \| fetched",
+                            note))
+        consulted_sources = list(dict.fromkeys(consulted_sources))[:3]
         self.last_receipt = {
+            "web_sources_retrieved": consulted_sources,
             "architecture": self.architecture,
             "decoder": "unified-recurrent-masked-v1",
             "memory_recalled": len(recalled),
@@ -237,6 +269,11 @@ class UnifiedCognitiveMechanism:
             "persistent_background_daemon": False,
         }
         yield from answer.encode("utf-8")
+        if consulted_sources:
+            footer = "\n\nSources retrieved (not independently fact-checked):\n"
+            for i, url in enumerate(consulted_sources, 1):
+                footer += f"[{i}] {url}\n"
+            yield from footer.encode("utf-8")
 
     def learn(self, kind: str, content: str, *, source: str,
               ttl_seconds: int | None = None) -> str:

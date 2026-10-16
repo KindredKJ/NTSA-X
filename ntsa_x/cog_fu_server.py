@@ -48,6 +48,12 @@ def main():
                         help="Attach trusted fixed-function scalar worker inside cognition")
     parser.add_argument("--readonly-workspace",
                         help="Attach only read-only workbench extension")
+    parser.add_argument("--enable-web-recall", action="store_true",
+                        help="Opt into browser-backed web research for explicit search intents")
+    parser.add_argument("--web-search-port", type=int, default=8888,
+                        help="Local SearXNG browser front-end port")
+    parser.add_argument("--web-source-host", action="append", default=[],
+                        help="Optional exact public HTTPS source host allowlist")
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
     parser.add_argument("--context-limit", type=int,
                         help="Serving-only recurrent input cap, default >=1024. "
@@ -74,7 +80,8 @@ def main():
         parser.error("--max-new-tokens exceeds checkpoint's max_answer")
     if args.decoder != "unified" and any(
         (args.memory_db, args.allow_memory_write, args.persist_episodes,
-         args.enable_scalar_extension, args.readonly_workspace)):
+         args.enable_scalar_extension, args.readonly_workspace,
+         args.enable_web_recall)):
         parser.error("Native extensions and memory require --decoder unified")
     if args.persist_episodes and (not args.allow_memory_write or not args.memory_db):
         parser.error("Episode persistence requires local memory DB and explicit write opt-in")
@@ -93,6 +100,13 @@ def main():
             extensions.append(scalar_extension())
         if args.readonly_workspace:
             extensions.append(workspace_extension(Workbench(args.readonly_workspace)))
+        if args.enable_web_recall:
+            from .web_recall import BrowserWebRecall
+            from .unified_cognition import web_recall_extension
+            web_recall = BrowserWebRecall(
+                search_port=args.web_search_port,
+                allowed_source_hosts=tuple(args.web_source_host))
+            extensions.append(web_recall_extension(web_recall))
         model = UnifiedCognitiveMechanism(
             model, memory=memory, extensions=tuple(extensions),
             persist_episodes=args.persist_episodes)
