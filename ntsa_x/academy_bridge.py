@@ -72,6 +72,7 @@ def plan(source_dir: str | Path, checkpoint_dir: str | Path) -> dict:
         "source_sha256": sha256(source_file.read_bytes()).hexdigest(),
         "checkpoint": str(check),
         "checkpoint_context": old,
+        "checkpoint_model_config": config,
         "required_full_sequence_bytes": needed,
         "suggested_training_context": updated,
         "answer_limit": answer_limit,
