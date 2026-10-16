@@ -141,6 +141,30 @@ class UnifiedRuntimeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "context"):
             list(runtime.generate(prefix("x" * 100)))
 
+    def test_background_l2_extensions_run_concurrently_with_ordered_results(self):
+        from threading import Barrier
+        rendezvous = Barrier(2, timeout=3)
+        def first(_frame):
+            rendezvous.wait()
+            return "first native result"
+        def second(_frame):
+            rendezvous.wait()
+            return "second native result"
+        model = DummyModel()
+        runtime = UnifiedCognitiveMechanism(
+            model,
+            extensions=(
+                NativeExtension("first.ext", lambda _: True, first),
+                NativeExtension("second.ext", lambda _: True, second),
+            ))
+        self.assertEqual(bytes(runtime.generate(prefix("check"))), b"Okay.")
+        self.assertEqual(runtime.last_receipt["background_levels"]
+                         ["L2_direct_native_extensions"],
+                         ["first.ext", "second.ext"])
+        self.assertFalse(runtime.last_receipt["persistent_background_daemon"])
+        encoded = bytes(x for x in model.prefix if 0 <= x < 256)
+        self.assertLess(encoded.index(b"first native"), encoded.index(b"second native"))
+
     def test_readonly_workspace_adapter_respects_workbench_guards(self):
         from ntsa_x.agent_workbench import Workbench
         with TemporaryDirectory() as tmp:
