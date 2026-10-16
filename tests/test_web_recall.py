@@ -97,7 +97,7 @@ class WebRecallTests(TestCase):
     def test_public_source_allowlist(self):
         browser = BrowserWebRecall(
             allowed_source_hosts=("example.org",), max_pages=1)
-        browser.search = lambda _q: [
+        browser.search = lambda _q, **_kw: [
             SearchHit("Wrong host", "https://example.com/a", ""),
             SearchHit("Allowed", "https://example.org/b", "")]
         with patch("ntsa_x.web_recall.fetch_text",
