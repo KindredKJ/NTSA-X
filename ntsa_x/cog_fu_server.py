@@ -80,7 +80,8 @@ def main():
         parser.error("--max-new-tokens exceeds checkpoint's max_answer")
     if args.decoder != "unified" and any(
         (args.memory_db, args.allow_memory_write, args.persist_episodes,
-         args.enable_scalar_extension, args.readonly_workspace)):
+         args.enable_scalar_extension, args.readonly_workspace,
+         args.enable_web_recall)):
         parser.error("Native extensions and memory require --decoder unified")
     if args.persist_episodes and (not args.allow_memory_write or not args.memory_db):
         parser.error("Episode persistence requires local memory DB and explicit write opt-in")
