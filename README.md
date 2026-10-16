@@ -126,6 +126,14 @@ The native model is a research-scale starting point. It is not pretrained,
 frontier-benchmarked, or automatically ready to replace a teacher model
 for useful everyday questions. See [Milestone 08 architecture and execution](docs/MILESTONE-08-NATIVE-TRAINABLE-STATE.md).
 
+## Milestone 13 — Kindred Academy: accelerated curriculum
+
+Original language, math, and computer-science micro-lessons with explanations,
+worked examples, separate practice and reserved exams, prerequisite mastery
+gates, and a no-overwrite offline JSONL export. No model weights are trained
+or upgraded in this milestone. See
+[Milestone 13 guide](docs/MILESTONE-13-KINDRED-ACADEMY.md).
+
 ## Milestone 12 — Bounded multi-step agent missions
 
 Added an **explicit mission controller** over Milestone 11 tools: inspect a
