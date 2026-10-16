@@ -5,6 +5,7 @@ Extensions are Python callbacks injected by an operator, NOT a secure sandbox.
 Only vetted local code may register, and untrusted observations are data.
 """
 from __future__ import annotations
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Callable, Iterator
 import json
@@ -124,6 +125,9 @@ class UnifiedCognitiveMechanism:
         self.session = session
         self.persist_episodes = persist_episodes
         self.last_receipt: dict | None = None
+        # One coordinator, several bounded in-request workload levels.
+        # These are not self-running daemons or autonomous model training.
+        self.background_workers = 2
 
     def _request(self, prefix: list[int]) -> tuple[int, str]:
         if (not isinstance(prefix, list) or not prefix
@@ -175,11 +179,19 @@ class UnifiedCognitiveMechanism:
                 f"[Unverified {record.kind} recall, source={record.source}] "
                 + record.content[:400])
         contributions = []
-        for ext in self.extensions:
-            if ext.supports(query):
-                # Operator-approved trusted native code; output bounded and
-                # observed, NOT a model-directed arbitrary plugin call.
-                raw = ext.contribute(frame)
+        # L2: extensions compute in parallel inside the host process while
+        # keeping the registered order deterministic. L1 memory recall has
+        # completed, so every extension sees the same CognitiveFrame.
+        eligible = [ext for ext in self.extensions if ext.supports(query)]
+        if len(eligible) > 8:
+            raise ValueError("Native extension workload budget exceeded")
+        if eligible:
+            with ThreadPoolExecutor(max_workers=min(
+                    self.background_workers, len(eligible))) as executor:
+                futures = [executor.submit(ext.contribute, frame)
+                           for ext in eligible]
+                raw_results = [future.result() for future in futures]
+            for ext, raw in zip(eligible, raw_results):
                 if not isinstance(raw, str) or len(raw.encode("utf-8")) > 2048:
                     raise ValueError("Native extension returned invalid output")
                 if raw:
@@ -213,6 +225,16 @@ class UnifiedCognitiveMechanism:
             "episodic_memory_committed": committed,
             "verified_external_truth": False,
             "cognitive_fluency_proven": False,
+            "background_levels": {
+                "L0_unified_decode_denoise": "executed",
+                "L1_memory_recall": "executed" if self.memory else "disabled",
+                "L2_direct_native_extensions": contributions,
+                "L3_episodic_consolidation": (
+                    "unverified_record_written" if committed else "disabled"),
+                "L4_model_weight_adaptation": "disabled_requires_explicit_training",
+            },
+            "native_parallel_worker_limit": self.background_workers,
+            "persistent_background_daemon": False,
         }
         yield from answer.encode("utf-8")
 
