@@ -34,6 +34,11 @@ def main():
     parser.add_argument("--model-id", default="ntsa-cog-fu-v1")
     parser.add_argument("--port", type=int, default=8081)
     parser.add_argument("--max-new-tokens", type=int, default=128)
+    parser.add_argument("--decoder", choices=("diffusion", "cortex"),
+                        default="diffusion",
+                        help="Serving-only ablation: full-window diffusion "
+                             "or causal recurrent cortex. Neither establishes "
+                             "English fluency; no checkpoint is changed.")
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
     parser.add_argument("--context-limit", type=int,
                         help="Serving-only recurrent input cap, default >=1024. "
@@ -45,6 +50,7 @@ def main():
     if args.device == "cuda" and not torch.cuda.is_available():
         parser.error("CUDA unavailable")
     model = load_checkpoint(args.checkpoint, device=args.device)
+    model.inference_decoder = args.decoder
     # A short smoke checkpoint can have a 128-byte training budget, but the
     # recall-first gateway's honest system banner alone uses 354 UTF-8 bytes.
     # Recurrent weights are context-length agnostic; expand the serving limit
@@ -63,6 +69,7 @@ def main():
     server.daemon_threads = True
     print(f"COG-FU local SSE endpoint http://127.0.0.1:{args.port}/v1/chat/completions",
           flush=True)
+    print(f"COG-FU serving decoder: {args.decoder}", flush=True)
     print(f"COG-FU input context cap: {serving_limit} bytes "
           "(may exceed training limit; response quality is unverified).",
           flush=True)
