@@ -285,6 +285,67 @@ class CogFuModel(nn.Module):
                 output.append(byte)
             return output
 
+    def unified_draft(self, prefix: list[int], *, max_new_tokens: int = 48,
+                      temperature: float = 0.0, diffusion_mix: float = 0.5) -> list[int]:
+        """One recurrent cognitive trajectory that jointly decodes and denoises.
+
+        At each step the same recurrent state supplies causal logits and
+        the diffusion module refines the current masked position. Log-probability
+        fusion uses the existing pretrained heads (NO checkpoint migration).
+        This is an experimental inference ablation, not learned reasoning.
+        """
+        if (not prefix or len(prefix) > self.config.max_context
+                or not 1 <= max_new_tokens <= self.config.max_answer
+                or not 0 <= temperature <= 2
+                or not 0 <= diffusion_mix <= 1):
+            raise ValueError("Invalid unified generation request")
+        self.eval()
+        device = self.cortex.embedding.weight.device
+        with torch.inference_mode():
+            prompt = torch.tensor([prefix], dtype=torch.long, device=device)
+            causal_logits, states = self.cortex(prompt)
+            joined = torch.cat([lane.flatten(1) for lane in states], dim=-1)
+            context = self.context_projection(joined)
+            output: list[int] = []
+            for index in range(max_new_tokens):
+                # Partial sequence: previously emitted bytes plus the single
+                # position currently being denoised. Both heads use one state.
+                partial = torch.tensor(
+                    [output + [MASK_ID]], dtype=torch.long, device=device)
+                noise_level = torch.tensor(
+                    [1.0 / (index + 1)], dtype=torch.float, device=device)
+                denoise_scores = self.denoise_logits(
+                    prompt, partial, noise_level,
+                    cached_context=context)[0, -1, :].clone()
+                causal_scores = causal_logits[0, -1, :].clone()
+                # Denoiser vocabulary is 263 including MASK; its output head
+                # has exactly the 262 original codec targets.
+                scores = ((1.0 - diffusion_mix) *
+                          F.log_softmax(causal_scores, dim=-1)
+                          + diffusion_mix *
+                          F.log_softmax(denoise_scores, dim=-1))
+                scores[[ByteCodec.PAD, ByteCodec.BOS, ByteCodec.USER,
+                        ByteCodec.ASSISTANT, ByteCodec.SYSTEM]] = -torch.inf
+                if temperature == 0:
+                    token = int(scores.argmax().item())
+                else:
+                    probs = F.softmax(scores / temperature, dim=-1)
+                    token = int(torch.multinomial(probs, 1).item())
+                if token == ByteCodec.EOS:
+                    break
+                if not 0 <= token < 256:
+                    raise RuntimeError("Invalid unified byte output")
+                output.append(token)
+                # The denoised decision immediately updates cognitive
+                # recurrence for the next decode/denoise decision.
+                next_token = torch.tensor([[token]], dtype=torch.long,
+                                          device=device)
+                causal_logits, states = self.cortex(next_token, states)
+                joined = torch.cat(
+                    [lane.flatten(1) for lane in states], dim=-1)
+                context = self.context_projection(joined)
+            return output
+
     def generate(self, prefix: list[int], *, max_new_tokens=128,
                  temperature=0.0) -> Iterator[int]:
         # Match the native_server generator contract. Denoising is full-window;
@@ -296,6 +357,10 @@ class CogFuModel(nn.Module):
         if decoder == "diffusion":
             raw = bytes(self.draft(prefix, max_new_tokens=max_new_tokens,
                                    temperature=temperature))
+        elif decoder == "unified":
+            raw = bytes(self.unified_draft(
+                prefix, max_new_tokens=max_new_tokens,
+                temperature=temperature))
         elif decoder == "cortex":
             # The pretrained recurrent head predicts the next byte. This
             # provides a meaningful decoding ablation, NOT fluent chat:

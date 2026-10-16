@@ -34,11 +34,20 @@ def main():
     parser.add_argument("--model-id", default="ntsa-cog-fu-v1")
     parser.add_argument("--port", type=int, default=8081)
     parser.add_argument("--max-new-tokens", type=int, default=128)
-    parser.add_argument("--decoder", choices=("diffusion", "cortex"),
+    parser.add_argument("--decoder", choices=("diffusion", "cortex", "unified"),
                         default="diffusion",
                         help="Serving-only ablation: full-window diffusion "
                              "or causal recurrent cortex. Neither establishes "
                              "English fluency; no checkpoint is changed.")
+    parser.add_argument("--memory-db", help="Local SQLite memory path (unified mode only)")
+    parser.add_argument("--allow-memory-write", action="store_true",
+                        help="Enable local memory commits, separately from generation")
+    parser.add_argument("--persist-episodes", action="store_true",
+                        help="Record unverified dialogue in local memory; requires write opt-in")
+    parser.add_argument("--enable-scalar-extension", action="store_true",
+                        help="Attach trusted fixed-function scalar worker inside cognition")
+    parser.add_argument("--readonly-workspace",
+                        help="Attach only read-only workbench extension")
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
     parser.add_argument("--context-limit", type=int,
                         help="Serving-only recurrent input cap, default >=1024. "
@@ -63,6 +72,30 @@ def main():
         parser.error(str(exc))
     if not 1 <= args.max_new_tokens <= model.config.max_answer:
         parser.error("--max-new-tokens exceeds checkpoint's max_answer")
+    if args.decoder != "unified" and any(
+        (args.memory_db, args.allow_memory_write, args.persist_episodes,
+         args.enable_scalar_extension, args.readonly_workspace)):
+        parser.error("Native extensions and memory require --decoder unified")
+    if args.persist_episodes and (not args.allow_memory_write or not args.memory_db):
+        parser.error("Episode persistence requires local memory DB and explicit write opt-in")
+    if args.allow_memory_write and not args.memory_db:
+        parser.error("Memory writes require explicit --memory-db")
+    memory = None
+    if args.decoder == "unified":
+        from .unified_cognition import (
+            UnifiedCognitiveMechanism, scalar_extension, workspace_extension)
+        from .memory_fabric import MemoryFabric
+        from .agent_workbench import Workbench
+        memory = (MemoryFabric(args.memory_db, writable=args.allow_memory_write)
+                  if args.memory_db else None)
+        extensions = []
+        if args.enable_scalar_extension:
+            extensions.append(scalar_extension())
+        if args.readonly_workspace:
+            extensions.append(workspace_extension(Workbench(args.readonly_workspace)))
+        model = UnifiedCognitiveMechanism(
+            model, memory=memory, extensions=tuple(extensions),
+            persist_episodes=args.persist_episodes)
     server = ThreadingHTTPServer(
         ("127.0.0.1", args.port),
         handler_factory(model, args.model_id, args.port, args.max_new_tokens))
@@ -81,6 +114,8 @@ def main():
         pass
     finally:
         server.server_close()
+        if memory is not None:
+            memory.close()
 
 
 if __name__ == "__main__":

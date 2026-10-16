@@ -126,6 +126,16 @@ The native model is a research-scale starting point. It is not pretrained,
 frontier-benchmarked, or automatically ready to replace a teacher model
 for useful everyday questions. See [Milestone 08 architecture and execution](docs/MILESTONE-08-NATIVE-TRAINABLE-STATE.md).
 
+## Milestone 15 — Unified cognition, background levels, memory and native extensions
+
+One checkpoint-preserving recurrent cognitive loop now decodes and denoises
+each byte with feedback into its updated recurrent state. A shared runtime
+coordinates **L0 generation**, **L1 memory recall**, **L2 direct concurrent
+trusted plugin computations**, **L3 explicitly authorized episodic storage**,
+and **L4 offline learning disabled by default**. This is a prototype with
+unproven conversational improvements, not an autonomous always-on process.
+Read [M15 implementation guide](docs/MILESTONE-15-UNIFIED-COGNITION.md).
+
 ## Milestone 14 — Academy supervised learning with context-aware versioning
 
 The original Academy instructions exceed the 128-byte COG-FU checkpoint:
