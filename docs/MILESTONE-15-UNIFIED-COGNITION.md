@@ -10,7 +10,7 @@ A separate **runtime wrapper** provides shared context to the same unified gener
 
 1. Decode the user's already validated chat prompt (no separate agent planning or tool-call transcript).
 2. Retrieve bounded, unverified working / semantic / episodic / procedural / relational/associative memories.
-3. Run explicitly attached *trusted native extensions* as local computation lanes (currently fixed scalar worker and read-only workbench); no model-directed arbitrary tool calls or plugin manifest negotiation.
+3. Run explicitly attached *trusted native extensions* concurrently (bounded to two in-request workers, returning results in registration order) as local computation lanes (currently fixed scalar worker and read-only workbench); no model-directed arbitrary tool calls or plugin manifest negotiation.
 4. Fold bounded extension computations and memory into the model's input before the unified recurrent/denoising cognitive cycle. Native plugins do useful actual computation or read protected files rather than only declaring capabilities.
 5. Optionally write a time-limited unverified episodic observation **only if** operator explicitly enables both local memory storage and writes. Additional semantic/procedural facts require explicit `UnifiedCognitiveMechanism.learn(...)` calls.
 
@@ -48,6 +48,15 @@ Second terminal (existing compatible gateway):
         --student-max-tokens 48 `
         --student-endpoint http://127.0.0.1:8081/v1/chat/completions `
         --use-student
+
+Background processing levels are **bounded, inside a single incoming request**:
+- L0: immediate state-coupled decoding and denoising
+- L1: session-scoped working plus other typed memory recall
+- L2: up to two native extension workers in parallel, observations ordered
+- L3: episodic memory consolidation if and only if writes were explicitly enabled
+- L4: offline model adaptation intentionally disabled; there is no autonomous optimizer
+
+**This is not a persistent always-on background agent**; it does not run while the service is idle. Active background scheduling, GPU acceleration and learned plugin routing require a separate validated design.
 
 The runtime keeps the existing SSE and model IDs intact. Use the prompts `scalar increment 7 by 2` or `search workspace for cortex` to route trusted compute extensions *inside the same cognitive runtime*. Plugin observations contribute as context to both native heads. Because model weights remain severely undertrained, outputs might still be repeated letters even if the extension result is correct.
 
