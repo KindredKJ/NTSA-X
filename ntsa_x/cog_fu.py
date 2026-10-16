@@ -341,6 +341,9 @@ class CogFuModel(nn.Module):
                 next_token = torch.tensor([[token]], dtype=torch.long,
                                           device=device)
                 causal_logits, states = self.cortex(next_token, states)
+                joined = torch.cat(
+                    [lane.flatten(1) for lane in states], dim=-1)
+                context = self.context_projection(joined)
             return output
 
     def generate(self, prefix: list[int], *, max_new_tokens=128,
