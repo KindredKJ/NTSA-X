@@ -32,6 +32,8 @@ jobs:
         run: python -m unittest discover -s tests -p 'test_academy.py' -v
       - name: Academy lesson-length sizing and independent development dataset
         run: python -m unittest discover -s tests -p 'test_academy_bridge.py' -v
+      - name: Unified cognitive memory and direct native extensions
+        run: python -m unittest discover -s tests -p 'test_unified_cognition.py' -v
       - name: Existing orbital demo
         run: python -m examples.demo_orbit
       - name: Paired orbit Nexus + Materializer smoke test
@@ -104,6 +106,8 @@ jobs:
         run: python -m unittest discover -s tests -p 'test_cog_fu_diagnose.py' -v
       - name: COG-FU versioned context expansion preserves source checkpoint
         run: python -m unittest discover -s tests -p 'test_academy_bridge.py' -v
+      - name: Unified recurrent cognitive and masked denoising state feedback
+        run: python -m unittest discover -s tests -p 'test_unified_native_fusion.py' -v
       - name: Verify existing test suite with PyTorch available
         run: python -m unittest discover -s tests -v
 
