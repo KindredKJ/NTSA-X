@@ -30,6 +30,8 @@ jobs:
         run: python -m unittest discover -s tests -p 'test_agent_mission.py' -v
       - name: Accelerated curriculum, independent exams and safe export
         run: python -m unittest discover -s tests -p 'test_academy.py' -v
+      - name: Academy lesson-length sizing and independent development dataset
+        run: python -m unittest discover -s tests -p 'test_academy_bridge.py' -v
       - name: Existing orbital demo
         run: python -m examples.demo_orbit
       - name: Paired orbit Nexus + Materializer smoke test
@@ -100,6 +102,8 @@ jobs:
         run: python -m unittest discover -s tests -p 'test_cog_fu_language.py' -v
       - name: Compare COG-FU recurrent/diffusion decode and detect repetition collapse
         run: python -m unittest discover -s tests -p 'test_cog_fu_diagnose.py' -v
+      - name: COG-FU versioned context expansion preserves source checkpoint
+        run: python -m unittest discover -s tests -p 'test_academy_bridge.py' -v
       - name: Verify existing test suite with PyTorch available
         run: python -m unittest discover -s tests -v
 

@@ -126,6 +126,16 @@ The native model is a research-scale starting point. It is not pretrained,
 frontier-benchmarked, or automatically ready to replace a teacher model
 for useful everyday questions. See [Milestone 08 architecture and execution](docs/MILESTONE-08-NATIVE-TRAINABLE-STATE.md).
 
+## Milestone 14 — Academy supervised learning with context-aware versioning
+
+The original Academy instructions exceed the 128-byte COG-FU checkpoint:
+the M14 preparer measures full ByteCodec conversation lengths and creates
+separate train/development JSONL sets, excluding reserved exam questions.
+Continuation now permits an explicit maximum-context-only extension with
+strict weight transfer to a NEW model checkpoint. No weights are changed until
+a local operator starts a training run. See
+[Milestone 14 guide](docs/MILESTONE-14-ACADEMY-TRAINING.md).
+
 ## Milestone 13 — Kindred Academy: accelerated curriculum
 
 Original language, math, and computer-science micro-lessons with explanations,

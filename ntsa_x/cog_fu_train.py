@@ -8,7 +8,7 @@ from __future__ import annotations
 from argparse import ArgumentParser
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from hashlib import sha256
 import json
 import math
@@ -91,11 +91,14 @@ def train(*, train_path: str | Path, eval_path: str | Path,
           clip_norm: float = 1.0, device: str = "auto",
           seed: int = 42, initialize_cortex: str | Path | None = None,
           initialize_from: str | Path | None = None,
-          replay_path: str | Path | None = None) -> dict:
+          replay_path: str | Path | None = None,
+          allow_context_expansion: bool = False) -> dict:
     if not (1 <= epochs <= 100 and 1 <= batch_size <= 128
             and 1e-7 <= learning_rate <= 0.05
             and 0.01 <= clip_norm <= 100):
         raise ValueError("Invalid training hyperparameters")
+    if allow_context_expansion and initialize_from is None:
+        raise ValueError("Context expansion requires a previous COG-FU checkpoint")
     if initialize_from is not None and initialize_cortex is not None:
         raise ValueError("Select either full hybrid checkpoint or native cortex")
     if device not in ("auto", "cpu", "cuda"):
@@ -123,11 +126,25 @@ def train(*, train_path: str | Path, eval_path: str | Path,
     random.seed(seed)
     parent_hash = None
     source = "scratch"
+    context_expanded_from = None
     if initialize_from is not None:
         previous_path = Path(initialize_from)
         model = load_checkpoint(previous_path, device=target_device)
         if model.config != config:
-            raise ValueError("COG-FU continuation must match model config")
+            # A recurrent context limit is a runtime bound, not a learnable
+            # position table. Same-shaped weights can be transplanted into a
+            # larger context *only* after explicit opt-in. All other model
+            # parameters and hyperparameters must remain identical.
+            compatible = replace(model.config, max_context=config.max_context)
+            if (not allow_context_expansion
+                    or config.max_context <= model.config.max_context
+                    or compatible != config):
+                raise ValueError("COG-FU continuation configuration mismatch")
+            old_context = model.config.max_context
+            upgraded = CogFuModel(config).to(target_device)
+            upgraded.load_state_dict(model.state_dict(), strict=True)
+            model = upgraded
+            context_expanded_from = old_context
         parent_hash = sha256((previous_path / "weights.pt").read_bytes()).hexdigest()
         source = "cog-fu-checkpoint"
     else:
@@ -183,6 +200,8 @@ def train(*, train_path: str | Path, eval_path: str | Path,
         "architecture": COG_FU_ARCH,
         "from": source,
         "previous_weights_sha256": parent_hash,
+        "context_expanded_from": context_expanded_from,
+        "trained_max_context": config.max_context,
         "transformer_layers": 0,
         "teacher_calls": 0,
         "trained_cortex_and_denoiser_jointly": True,
@@ -231,6 +250,8 @@ def main() -> None:
                         default="auto")
     parser.add_argument("--initialize-cortex")
     parser.add_argument("--initialize-from")
+    parser.add_argument("--allow-context-expansion", action="store_true",
+                        help="Permit max_context-only increase while keeping weights")
     parser.add_argument("--replay")
     args = parser.parse_args()
     config = CogFuConfig(
@@ -242,7 +263,8 @@ def main() -> None:
                    output=args.output, config=config, epochs=args.epochs,
                    batch_size=args.batch_size, learning_rate=args.learning_rate,
                    device=args.device, initialize_cortex=args.initialize_cortex,
-                   initialize_from=args.initialize_from, replay_path=args.replay)
+                   initialize_from=args.initialize_from, replay_path=args.replay,
+                   allow_context_expansion=args.allow_context_expansion)
     print(json.dumps(result, indent=2))
 
 
