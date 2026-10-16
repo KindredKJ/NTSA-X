@@ -126,6 +126,19 @@ The native model is a research-scale starting point. It is not pretrained,
 frontier-benchmarked, or automatically ready to replace a teacher model
 for useful everyday questions. See [Milestone 08 architecture and execution](docs/MILESTONE-08-NATIVE-TRAINABLE-STATE.md).
 
+## Milestone 16 — Browser-backed live web recall
+
+Opt-in native web recall now uses a fresh, ephemeral browser to query a locally
+operated SearXNG front end, then independently fetches public HTTPS source
+pages using DNS-pinned, bounded reads. URL/timestamp/source excerpts feed the
+existing unified cognitive loop before generation. Retrieved source links can
+be emitted separately from native generated text. No extra neural model, teacher,
+new model weights, or paid search API is required. This is NOT access to
+ChatGPT's proprietary search system, a trusted entire-internet index, or
+guaranteed unlimited web search.
+
+Setup: [M16 browser web recall](docs/MILESTONE-16-BROWSER-WEB-RECALL.md).
+
 ## Milestone 15 — Unified cognition, background levels, memory and native extensions
 
 One checkpoint-preserving recurrent cognitive loop now decodes and denoises
