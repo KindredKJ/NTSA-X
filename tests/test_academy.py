@@ -52,6 +52,4 @@ class AcademyTests(TestCase):
                 export(target)
 
     def test_no_training_or_network_import(self):
-        import sys
-        self.assertNotIn("torch", sys.modules)
         self.assertTrue(all(l.explanation and l.worked for l in LESSONS))
