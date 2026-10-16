@@ -93,6 +93,25 @@ def workspace_extension(workbench) -> NativeExtension:
 
     return NativeExtension("workspace.native", supports, contribute)
 
+def web_recall_extension(browser_recall) -> NativeExtension:
+    """Opt-in fresh-source recall without adding any model layers.
+
+    Browser searches occur only for explicit web-search language or a few
+    news-freshness phrases. Retrieved text remains untrusted observation.
+    """
+    from .web_recall import query_for_web
+
+    def supports(request: str) -> bool:
+        return query_for_web(request) is not None
+
+    def contribute(frame: CognitiveFrame) -> str:
+        query = query_for_web(frame.request)
+        if query is None:
+            return ""
+        return browser_recall.context(query)
+
+    return NativeExtension("web.recall.native", supports, contribute)
+
 
 class UnifiedCognitiveMechanism:
     """Host model + memory + extensions in one inference path.
