@@ -1,0 +1,36 @@
+name: RFS isolated validation
+on:
+  push:
+    branches:
+      - category/recall-first-systems-v1
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: rfs-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  rfs-verification:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.12', '3.13']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Compile RFS independently
+        run: python -m compileall -q rfs tests_rfs
+      - name: RFS correctness and isolation tests
+        run: python -m unittest discover -s tests_rfs -v
+      - name: Measured deterministic work avoidance
+        run: python -m rfs.benchmark --unique 12 --repeats 4 --iterations 50000 --output rfs-benchmark.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rfs-benchmark-${{ matrix.os }}-py${{ matrix.python }}-${{ github.run_id }}
+          path: rfs-benchmark.json
+          retention-days: 30
+          if-no-files-found: error
