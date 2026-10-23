@@ -91,9 +91,13 @@ class RecallFirstTests(unittest.TestCase):
 
     def test_corrupt_row_recalculated(self):
         old = self.cache.execute(spec(), worker, verify)
-        with sqlite3.connect(self.path) as db:
-            db.execute("UPDATE rfs_exact_results SET result_json=? WHERE work_key=?",
-                       ('{"value":999}', old.key))
+        db = sqlite3.connect(self.path)
+        try:
+            with db:
+                db.execute("UPDATE rfs_exact_results SET result_json=? WHERE work_key=?",
+                           ('{"value":999}', old.key))
+        finally:
+            db.close()
         recovered = self.cache.execute(spec(), worker, verify)
         self.assertEqual(recovered.source, "computed")
         self.assertEqual(recovered.value, {"value": 21})
