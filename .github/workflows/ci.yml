@@ -56,7 +56,7 @@ jobs:
           python-version: '3.12'
       - name: Verify 100-item factory run and measured sequential comparison
         run: python -m examples.benchmark_factory --tasks 100 --workers 8 --compare --output factory-bench.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: factory-throughput-${{ matrix.os }}-${{ github.run_id }}
           path: factory-bench.json
@@ -76,7 +76,7 @@ jobs:
           python-version: '3.12'
       - name: Compare Persistent Scalar vs one-shot workers
         run: python -m examples.benchmark_persistent_scalar --tasks 100 --workers 1,4,8,16 --repeats 2 --output persistent-scalar-bench.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: persistent-scalar-${{ matrix.os }}-${{ github.run_id }}
           path: persistent-scalar-bench.json
