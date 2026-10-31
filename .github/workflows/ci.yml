@@ -112,6 +112,15 @@ jobs:
         run: python -m unittest discover -s tests -p 'test_unified_native_fusion.py' -v
       - name: Verify existing test suite with PyTorch available
         run: python -m unittest discover -s tests -v
+      - name: Run Krystal three rounds of three distinct real-model tests
+        run: python -m examples.benchmark_krystal_9 --output krystal-nine-results.json --seed 7 --max-new-tokens 20
+      - name: Upload measured Krystal nine-run diagnostic results
+        uses: actions/upload-artifact@v4
+        with:
+          name: krystal-9-probes-${{ matrix.os }}-${{ github.run_id }}
+          path: krystal-nine-results.json
+          retention-days: 14
+          if-no-files-found: error
 
   verified-gate:
     needs: [test, factory-benchmark, persistent-benchmark, native-state-smoke]
