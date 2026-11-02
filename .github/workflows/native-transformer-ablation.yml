@@ -1,0 +1,55 @@
+name: NTSA-X native recurrence versus causal Transformer
+on:
+  push:
+    branches: [research/recurrent-transformer-controlled-ablation-20261102]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  controlled-architecture-ablation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install CPU-native PyTorch
+        run: python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch>=2.6,<3"
+      - name: Verify causal masking and native recurrence memory
+        run: python -m unittest discover -s tests -p 'test_matched_architecture_study.py' -v
+      - name: Obtain real ARC-AGI-2 TRAINING split only, not 120 public evaluation tasks
+        run: |
+          git clone --depth 1 https://github.com/arcprize/ARC-AGI-2.git official-arc-agi-2
+          test "$(find official-arc-agi-2/data/training -name '*.json' | wc -l)" -eq 1000
+          git -C official-arc-agi-2 rev-parse HEAD > official_training_dataset_commit.txt
+          git rev-parse HEAD > kindred_study_commit.txt
+      - name: Train both from scratch with frozen token/optimizer budget
+        run: |
+          python -m ntsa_x.matched_architecture_study --training-dir official-arc-agi-2/data/training --output native-transformer-study.json --steps 30
+          python - <<'PY'
+          import json
+          p=json.load(open("native-transformer-study.json"))
+          assert p["protocol"]["training_files"]==850
+          assert p["protocol"]["heldout_files"]==150
+          assert p["token_exposure_matched"]
+          assert not p["model_comparison_is_exact_flop_matched"]
+          print("NATIVE_VS_TRANSFORMER_HELDOUT_BPB",p["mean_native_bpb"],p["mean_transformer_bpb"])
+          print("NATIVE_RECURRENT_MEMORY_ABLATION_BPB",p["mean_native_no_memory_bpb"])
+          PY
+      - name: Preserve reproducible research hashes
+        run: |
+          python -VV > python_version.txt
+          sha256sum ntsa_x/matched_architecture_study.py ntsa_x/native_model.py native-transformer-study.json > study_hashes.sha256
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: kindred-native-transformer-ablation-${{ github.run_id }}
+          path: |
+            native-transformer-study.json
+            official_training_dataset_commit.txt
+            kindred_study_commit.txt
+            python_version.txt
+            study_hashes.sha256
+          retention-days: 30
+          if-no-files-found: warn
