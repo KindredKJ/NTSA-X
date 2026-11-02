@@ -7,7 +7,14 @@ permissions:
   contents: read
 jobs:
   arc2-public-eval:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -40,7 +47,7 @@ jobs:
           cat official_dataset_commit.txt kindred_commit.txt interpreter_version.txt result_hashes.sha256
       - uses: actions/upload-artifact@v7
         with:
-          name: ntsa-arc2-real-public-data-${{ github.run_id }}
+          name: ntsa-arc2-real-public-data-${{ github.run_id }}-${{ matrix.os }}
           path: |
             arc2-public-results.json
             official_dataset_commit.txt
@@ -49,3 +56,34 @@ jobs:
             result_hashes.sha256
           retention-days: 30
           if-no-files-found: error
+
+  cross-runner-compare:
+    needs: arc2-public-eval
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: ntsa-arc2-real-public-data-${{ github.run_id }}-*
+          path: independent
+      - name: Compare blinded results across independent Windows and Linux runners
+        run: |
+          python - <<'PY'
+          import json
+          import pathlib
+          root = pathlib.Path("independent")
+          files = sorted(root.glob("*/arc2-public-results.json"))
+          assert len(files) == 2, f"expected 2 independent reports; found {len(files)}"
+          a, b = (json.loads(p.read_text()) for p in files)
+          assert a["task_count"] == b["task_count"] == 120
+          assert a["task_sha256_aggregate"] == b["task_sha256_aggregate"]
+          assert a["per_task"] == b["per_task"], "blinded task scores differ by OS"
+          assert a["primary_mean_fractional_task_score"] == b["primary_mean_fractional_task_score"]
+          assert a["ablation_mean_fractional_task_score"] == b["ablation_mean_fractional_task_score"]
+          versions = sorted(root.glob("*/official_dataset_commit.txt"))
+          assert len(versions) == 2 and versions[0].read_text().strip() == versions[1].read_text().strip()
+          commits = sorted(root.glob("*/kindred_commit.txt"))
+          assert len(commits) == 2 and commits[0].read_text().strip() == commits[1].read_text().strip()
+          print("ARC2_INDEPENDENT_CROSS_RUNNER_MATCH=PASS")
+          print("120 genuine official public tasks, identical per-task scores and data revisions")
+          PY
