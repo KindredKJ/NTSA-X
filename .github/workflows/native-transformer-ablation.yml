@@ -7,7 +7,14 @@ permissions:
   contents: read
 jobs:
   controlled-architecture-ablation:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
@@ -44,7 +51,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: kindred-native-transformer-ablation-${{ github.run_id }}
+          name: kindred-native-transformer-ablation-${{ github.run_id }}-${{ matrix.os }}
           path: |
             native-transformer-study.json
             official_training_dataset_commit.txt
@@ -53,3 +60,35 @@ jobs:
             study_hashes.sha256
           retention-days: 30
           if-no-files-found: warn
+
+  cross-platform-research-review:
+    needs: controlled-architecture-ablation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: kindred-native-transformer-ablation-${{ github.run_id }}-*
+          path: independent
+      - name: Cross-check model conditions, output directions and architecture measurements
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          root=Path("independent")
+          paths=sorted(root.glob("*/native-transformer-study.json"))
+          assert len(paths)==2, len(paths)
+          a,b=(json.loads(x.read_text()) for x in paths)
+          for key in ("experiment","task","protocol","parameter_delta_percent","model_comparison_is_exact_flop_matched"):
+              assert a[key]==b[key], f"{key} inconsistent"
+          for key in ("mean_native_bpb","mean_transformer_bpb","mean_native_no_memory_bpb"):
+              assert abs(a[key]-b[key])<0.25, f"{key} numerical drift >= 0.25 bits"
+          for key in ("kindred_study_commit.txt","official_training_dataset_commit.txt"):
+              files=sorted(root.glob("*/"+key))
+              assert len(files)==2 and files[0].read_text().strip()==files[1].read_text().strip()
+          print("MODEL_ABLATION_CROSS_RUNNER_STATUS=PASS")
+          print("native_bpb",a["mean_native_bpb"],b["mean_native_bpb"])
+          print("transformer_bpb",a["mean_transformer_bpb"],b["mean_transformer_bpb"])
+          print("native_no_memory_bpb",a["mean_native_no_memory_bpb"],b["mean_native_no_memory_bpb"])
+          print("Exact FLOP parity has NOT been established.")
+          PY
