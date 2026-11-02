@@ -143,7 +143,7 @@ def evaluate(path: Path, *, max_tasks: int = 120):
             })
         records.append({
             "task_id": file.stem,
-            "task_sha256": hashlib.sha256(raw).hexdigest(),
+            "task_sha256": hashlib.sha256(\n                json.dumps(task, sort_keys=True, separators=(",", ":")).encode("utf-8")\n            ).hexdigest(),
             "agent_score": sum(p["agent_solved"] for p in pair_results)/len(pair_results),
             "ablation_score": sum(p["ablation_solved"] for p in pair_results)/len(pair_results),
             "test_pair_count": len(pair_results),
