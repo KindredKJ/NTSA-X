@@ -227,7 +227,7 @@ def main(argv=None) -> int:
             from pathlib import Path
             path = Path(args.output)
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(encoded, encoding="utf-8")
+            path.write_bytes(encoded.encode("utf-8"))  # byte-identical LF output across OSes
         print(encoded, end="")
         return 0
     except ValueError as exc:
