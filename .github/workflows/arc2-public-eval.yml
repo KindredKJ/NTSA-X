@@ -1,0 +1,51 @@
+name: ARC-AGI-2 official public-data independent evaluation
+on:
+  push:
+    branches: [research/arc-public-evaluation-20261102]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  arc2-public-eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Freeze evaluated Kindred commit
+        run: git rev-parse HEAD | tee kindred_commit.txt
+      - name: Run local solver tests without external data
+        run: python -m unittest discover -s tests -p 'test_arc2_public_eval.py' -v
+      - name: Clone genuine ARC Prize public evaluation dataset
+        run: |
+          git clone --depth 1 https://github.com/arcprize/ARC-AGI-2.git external-arc-agi-2
+          git -C external-arc-agi-2 rev-parse HEAD | tee official_dataset_commit.txt
+          test "$(find external-arc-agi-2/data/evaluation -name '*.json' | wc -l)" -eq 120
+      - name: Execute all 120 public tasks with two-attempt matched ablation
+        run: |
+          python -m ntsa_x.arc2_public_eval --dataset external-arc-agi-2/data/evaluation --output arc2-public-results.json
+          python - <<'PY'
+          import json
+          p = json.load(open("arc2-public-results.json"))
+          assert p["task_count"] == 120
+          assert p["status"] == "LOCAL_EXECUTION_OFFICIAL_PUBLIC_DATASET_NOT_OFFICIAL_LEADERBOARD"
+          print(f"REAL_ARC_AGI2_PUBLIC_EVAL agent={p['primary_mean_fractional_task_score']*100:.3f}% ablation={p['ablation_mean_fractional_task_score']*100:.3f}%")
+          PY
+      - name: Capture cryptographic evidence and runtime package version
+        run: |
+          sha256sum ntsa_x/arc2_public_eval.py tests/test_arc2_public_eval.py arc2-public-results.json > result_hashes.sha256
+          python -VV > interpreter_version.txt
+          cat official_dataset_commit.txt kindred_commit.txt interpreter_version.txt result_hashes.sha256
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ntsa-arc2-real-public-data-${{ github.run_id }}
+          path: |
+            arc2-public-results.json
+            official_dataset_commit.txt
+            kindred_commit.txt
+            interpreter_version.txt
+            result_hashes.sha256
+          retention-days: 30
+          if-no-files-found: error
