@@ -36,6 +36,18 @@ jobs:
         run: python -m unittest discover -s tests -p 'test_web_recall.py' -v
       - name: Unified cognitive memory and direct native extensions
         run: python -m unittest discover -s tests -p 'test_unified_cognition.py' -v
+      - name: Measure interventional belief learning against random baseline
+        run: python -m ntsa_x.interventional_memory --seeds 12 --steps 800 --warmup 300 --output interventional-memory-report.json
+      - name: Record exact source revision for experiment
+        run: git rev-parse HEAD > interventional-memory-commit.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: interventional-memory-${{ matrix.os }}-${{ github.run_id }}
+          path: |
+            interventional-memory-report.json
+            interventional-memory-commit.txt
+          retention-days: 14
+          if-no-files-found: error
       - name: Existing orbital demo
         run: python -m examples.demo_orbit
       - name: Paired orbit Nexus + Materializer smoke test
