@@ -127,5 +127,49 @@ class SemanticMemoryTests(unittest.TestCase):
             other.close()
 
 
+
+class UnifiedIntegrationTests(unittest.TestCase):
+    def test_recalled_dense_context_precedes_native_generation(self):
+        from ntsa_x.memory_fabric import MemoryFabric
+        from ntsa_x.unified_cognition import (
+            UnifiedCognitiveMechanism, BOS, USER, EOS, ASSISTANT
+        )
+
+        class Config:
+            max_context = 2048
+
+        class Model:
+            config = Config()
+            architecture = "test-model"
+            def __init__(self):
+                self.last_prefix = None
+            def unified_draft(self, prefix, **kwargs):
+                self.last_prefix = prefix
+                return list(b"Found context")
+
+        primary = MemoryFabric(":memory:", writable=True)
+        dense = SemanticMemory(":memory:", embedder=ToyEmbedder(), writable=True)
+        try:
+            dense.remember(
+                "semantic", "Kindred Genesis website release instructions",
+                source="user", session="founder"
+            )
+            fusion = FusedRecallMemory(primary, dense)
+            model = Model()
+            runtime = UnifiedCognitiveMechanism(
+                model, memory=fusion, session="founder", persist_episodes=True
+            )
+            query = "Please publish the site"
+            prompt = [BOS, USER, *query.encode("utf-8"), EOS, ASSISTANT]
+            self.assertEqual(bytes(runtime.generate(prompt)), b"Found context")
+            serialized = bytes(x for x in model.last_prefix if 0 <= x < 256)
+            self.assertIn(b"Kindred Genesis website release instructions", serialized)
+            self.assertEqual(runtime.last_receipt["memory_recalled"], 1)
+            self.assertTrue(runtime.last_receipt["episodic_memory_committed"])
+            self.assertEqual(primary.summary()["counts"]["episodic"], 1)
+        finally:
+            dense.close()
+            primary.close()
+
 if __name__ == "__main__":
     unittest.main()
