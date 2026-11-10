@@ -1,0 +1,3 @@
+{"prompt": "compute calibration 11", "expected": "35", "group": "private-reserved"}
+{"prompt": "compute calibration 19", "expected": "59", "group": "private-reserved"}
+{"prompt": "compute calibration 23", "expected": "71", "group": "private-reserved"}
