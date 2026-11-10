@@ -64,3 +64,5 @@ python -m compileall -q ntsa_x/scasi_iii_assimilation.py examples/experiment_sca
 ```
 
 A native-COG-FU dataset-parser test runs when the real native PyTorch modules exist (in the repository's native CI stage) and skips in a minimal standard-library-only environment. Ordinary tests do not train weights or modify checkpoints.
+
+Native CI also exercises an actual CPU COG-FU supervised gradient step using the condensed training context. It verifies nonzero gradients, changed finite model weights, and a no-overwrite preparation path. This is a gradient plumbing test only; no neural generalization is inferred until a real checkpoint is trained and scored on a sealed exam.

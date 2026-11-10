@@ -78,6 +78,33 @@ class AssimilationDataTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             prepare_assimilation(a, b)
 
+    def test_native_condensed_gradient_updates_weights(self):
+        """Native COG-FU gradient-path smoke, not a generalization claim."""
+        try:
+            import torch
+            from ntsa_x.cog_fu import CogFuConfig, CogFuModel
+        except ImportError:
+            self.skipTest("Full NTSA-X COG-FU + PyTorch required for native gradient smoke")
+        torch.manual_seed(2026)
+        config = CogFuConfig(width=16, layers=1, max_context=512,
+                             max_answer=32, diffusion_layers=1, denoise_steps=1)
+        model = CogFuModel(config)
+        sample = prepare_assimilation(*fixtures()).condensed_train[0]["messages"]
+        original = {key: value.detach().clone() for key, value in model.state_dict().items()}
+        optimizer = torch.optim.SGD(model.parameters(), lr=0.0001)
+        optimizer.zero_grad(set_to_none=True)
+        loss = model.joint_loss(sample, noise_fraction=0.5, seed=42)["loss"]
+        self.assertTrue(torch.isfinite(loss).item())
+        loss.backward()
+        self.assertTrue(any(parameter.grad is not None and
+                            bool(torch.any(parameter.grad != 0))
+                            for parameter in model.parameters()))
+        optimizer.step()
+        self.assertTrue(any(not torch.equal(original[key], value)
+                            for key, value in model.state_dict().items()))
+        self.assertTrue(all(torch.isfinite(value).all().item()
+                            for value in model.state_dict().values()))
+
     def test_native_cog_fu_parser_when_available(self):
         try:
             from ntsa_x.cog_fu import CogFuConfig
