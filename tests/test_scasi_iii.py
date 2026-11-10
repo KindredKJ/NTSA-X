@@ -56,7 +56,7 @@ class SCASIIIRegression(unittest.TestCase):
         self.assertFalse(out["physical_negative_latency_claimed"])
 
     def test_stale_is_not_current(self):
-        c = PredictiveSuperCycle(GOALS, memory=FakeMemory([Record("rollback plan", created=time.time()-1000)]), horizon_seconds=15)
+        c = PredictiveSuperCycle(GOALS, memory=FakeMemory([Record("rollback plan", created=time.time()-1000)]), horizon_seconds=15, evidence_max_age_seconds=15)
         f = c.resolve("deploy service")["forecasts"][0]
         self.assertEqual(f["knowledge_gaps"][1]["state"], "stale")
 
@@ -101,3 +101,59 @@ class SCASIIIRegression(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+from ntsa_x.scasi_iii_evolution import PredictiveKnowledgeCoordinator, requested_knowledge
+
+class SCASIII1Regression(unittest.TestCase):
+    def test_detects_explicit_unknowns(self):
+        self.assertEqual(requested_knowledge("We need to know release manifest signing. What is rollback plan?"),
+                         ("release manifest signing", "What is rollback plan"))
+        self.assertEqual(requested_knowledge("Hi, tell a story."), ())
+    def test_novel_input_is_not_marked_resolved(self):
+        c = PredictiveKnowledgeCoordinator(GOALS, memory=FakeMemory())
+        r = c.resolve("What is the launch risk assessment?")
+        self.assertTrue(r["unmatched_request"])
+        self.assertEqual(r["discovered_unknowns"][0]["state"], "missing")
+        self.assertFalse(r["all_discovered_unknowns_resolved"])
+    def test_evidence_age_independent_of_prefetch(self):
+        m = FakeMemory([Record("rollback plan", created=time.time()-3600)])
+        c = PredictiveSuperCycle(GOALS, memory=m, horizon_seconds=2, evidence_max_age_seconds=86400)
+        self.assertEqual(c.resolve("deploy service")["forecasts"][0]["knowledge_gaps"][1]["state"], "unverified")
+    def test_invalidation_after_new_memory(self):
+        m = FakeMemory()
+        c = PredictiveSuperCycle(GOALS, memory=m)
+        c.warm(("deploy",))
+        m.records.append(Record("rollback plan", created=time.time()))
+        self.assertEqual(c.resolve("deploy service")["forecasts"][0]["knowledge_gaps"][1]["state"], "missing")
+        self.assertEqual(c.invalidate(("deploy",)), 1)
+        self.assertEqual(c.resolve("deploy service")["forecasts"][0]["knowledge_gaps"][1]["state"], "unverified")
+    def test_forecasts_from_observations(self):
+        c = PredictiveKnowledgeCoordinator(GOALS, memory=FakeMemory())
+        c.observe("train model now")
+        c.observe("training upgrade")
+        self.assertEqual(c.anticipate(max_objectives=1)["warmed"], ("training",))
+        self.assertTrue(c.resolve("train model")["forecasts"][0]["prepared_before_request"])
+    def test_unverified_evidence_not_promoted(self):
+        m = FakeMemory([Record("launch risk assessment report", created=time.time())])
+        c = PredictiveKnowledgeCoordinator(GOALS, memory=m)
+        r = c.resolve("What is launch risk assessment?")
+        self.assertEqual(r["discovered_unknowns"][0]["state"], "unverified")
+        self.assertFalse(r["all_discovered_unknowns_resolved"])
+    def test_bounded_discovery(self):
+        with self.assertRaises(ValueError):
+            requested_knowledge("x"*4097)
+        with self.assertRaises(ValueError):
+            PredictiveKnowledgeCoordinator(GOALS, memory=FakeMemory()).anticipate(max_objectives=3)
+    def test_native_novel_unknown(self):
+        c = PredictiveKnowledgeCoordinator(GOALS, memory=FakeMemory())
+        stub = ModuleType("ntsa_x.unified_cognition")
+        stub.NativeExtension = lambda name, supports, contribute: SimpleNamespace(
+            name=name, supports=supports, contribute=contribute)
+        with patch.dict(sys.modules, {"ntsa_x.unified_cognition": stub}):
+            ext = c.native_extension()
+        self.assertTrue(ext.supports("What is evidence quality score?"))
+        self.assertFalse(ext.supports("Hello!"))
+        output = ext.contribute(SimpleNamespace(request="What is evidence quality score?"))
+        self.assertIn("new_unknowns=[", output)
+        self.assertIn("missing", output)

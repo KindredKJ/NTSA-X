@@ -77,13 +77,15 @@ class PredictiveSuperCycle:
 
     def __init__(self, objectives: tuple[Objective, ...], *, memory: RecallPort,
                  session: str = "default", horizon_seconds: int = 120,
-                 max_cache: int = 32, max_sources: int = 5):
+                 max_cache: int = 32, max_sources: int = 5,
+                 evidence_max_age_seconds: int = 30 * 86400):
         if (not objectives or len(objectives) > 64
                 or len({x.id for x in objectives}) != len(objectives)
                 or not 1 <= len(session) <= 100
                 or not 1 <= horizon_seconds <= 3600
                 or not 1 <= max_cache <= 256
-                or not 1 <= max_sources <= 10):
+                or not 1 <= max_sources <= 10
+                or not 1 <= evidence_max_age_seconds <= 10 * 365 * 86400):
             raise ValueError("Invalid bounded predictive configuration")
         self.objectives = {x.id: x for x in objectives}
         self.memory = memory
@@ -91,6 +93,7 @@ class PredictiveSuperCycle:
         self.horizon_seconds = horizon_seconds
         self.max_cache = max_cache
         self.max_sources = max_sources
+        self.evidence_max_age_seconds = evidence_max_age_seconds
         self._cache: dict[str, tuple[float, Forecast]] = {}
         self._recent: deque[str] = deque(maxlen=16)
         self._outcomes: dict[str, deque[bool]] = defaultdict(lambda: deque(maxlen=32))
@@ -138,7 +141,7 @@ class PredictiveSuperCycle:
             state = "missing"
             if matched:
                 fresh = [r for r in matched
-                         if time.time() - r.created <= self.horizon_seconds]
+                         if time.time() - r.created <= self.evidence_max_age_seconds]
                 chosen = fresh or matched
                 state = ("stale" if not fresh else
                          "attested" if all(r.verified for r in fresh) else "unverified")
@@ -218,6 +221,17 @@ class PredictiveSuperCycle:
             return {"objective_id": objective_id, "samples": len(history),
                     "success_fraction": sum(history) / len(history),
                     "parameter_updates": 0}
+
+    def invalidate(self, objective_ids: tuple[str, ...] | None = None) -> int:
+        """Drop prepared entries on memory or policy changes."""
+        ids = tuple(self.objectives) if objective_ids is None else objective_ids
+        if any(ident not in self.objectives for ident in ids):
+            raise ValueError("Unknown objective in cache invalidation")
+        with self._lock:
+            removed = sum(ident in self._cache for ident in ids)
+            for ident in ids:
+                self._cache.pop(ident, None)
+            return removed
 
     def snapshot(self) -> dict:
         with self._lock:

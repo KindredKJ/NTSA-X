@@ -48,3 +48,14 @@ The tests use deterministic in-process fixtures. The demo uses the actual `Memor
 ## Benchmark design (EIM remains unmeasured)
 
 Benchmark paired cold and prewarmed requests with identical objectives and evidence. Report hit rate, median/p95 request latency, total preparation+request compute, factual evidence coverage, false-positive gap closure, accuracy on held-out outcomes, RAM, and net benefit across realistic request probabilities. Time spent before input arrival is **not zero computational cost**. In the next experiment, compare baseline NTSA-X, NTSA-X with recall, and SCASI III warmed NTSA-X at fixed budgets and equal held-out sets. Neither fewer parameters nor frontier-level reasoning has been established by this prototype.
+
+## SCASI III.1: knowledge-gap discovery, native hook and benchmarks
+
+The additive native-scasi evolution coordinator extracts only explicitly requested unknowns, probes session-aware NTSA-X memory, and preserves unverified status. It ranks existing objectives using observed previous requests and prewarms a bounded shortlist. A new, unmatched question remains missing or unverified, never magically solved. The evidence-age policy is separate from the prefetch cache TTL. After memory changes, call controller.invalidate() before relying on cached context. No model weights or checkpoints change.
+
+Use coordinator.attach_to_model(loaded_native_model) to create the real UnifiedCognitiveMechanism with the additive SCASI extension; it can now surface previously unregistered explicit knowledge questions. The integration test uses actual NTSA-X SQLite MemoryFabric and cognition runtime with a deterministic stand-in model, not a trained model accuracy evaluation.
+
+Run: python -m unittest tests.test_scasi_iii tests.test_scasi_iii_native_integration -v
+Run: python -m examples.benchmark_scasi_iii --requests 300 --repeats 7
+
+The synthetic lexical-recall benchmark compares direct recall, cold SCASI, and warmed SCASI and includes all prewarming costs in total time. It measures orchestration and memory retrieval ONLY, not neural inference, truth verification, or Effective Intelligence Multiplier. Held-out neural model benchmarks remain future work.
