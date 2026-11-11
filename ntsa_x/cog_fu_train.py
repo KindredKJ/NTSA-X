@@ -21,6 +21,7 @@ from torch.nn.utils import clip_grad_norm_
 from .cog_fu import COG_FU_ARCH, CogFuConfig, CogFuModel
 from .native_model import ByteCodec
 from .native_train import load_checkpoint as load_native_checkpoint
+from .train_progress import open_progress, emit_progress
 
 
 def read_conversations(path: str | Path, config: CogFuConfig) -> list[list[dict]]:
@@ -92,11 +93,15 @@ def train(*, train_path: str | Path, eval_path: str | Path,
           seed: int = 42, initialize_cortex: str | Path | None = None,
           initialize_from: str | Path | None = None,
           replay_path: str | Path | None = None,
-          allow_context_expansion: bool = False) -> dict:
+          allow_context_expansion: bool = False,
+          progress_jsonl: str | Path | None = None,
+          progress_every: int = 8) -> dict:
     if not (1 <= epochs <= 100 and 1 <= batch_size <= 128
             and 1e-7 <= learning_rate <= 0.05
             and 0.01 <= clip_norm <= 100):
         raise ValueError("Invalid training hyperparameters")
+    if type(progress_every) is not int or not 1 <= progress_every <= 10000:
+        raise ValueError("Invalid telemetry interval")
     if allow_context_expansion and initialize_from is None:
         raise ValueError("Context expansion requires a previous COG-FU checkpoint")
     if initialize_from is not None and initialize_cortex is not None:
@@ -167,6 +172,8 @@ def train(*, train_path: str | Path, eval_path: str | Path,
                     for k, v in model.state_dict().items()}
     history = []
     steps = 0
+    total_steps = math.ceil(len(training) / batch_size) * epochs
+    progress = open_progress(progress_jsonl, total_steps=total_steps)
     for epoch in range(epochs):
         random.shuffle(training)
         model.train()
@@ -187,7 +194,12 @@ def train(*, train_path: str | Path, eval_path: str | Path,
             optimizer.step()
             aggregate += float(joint.detach().item())
             steps += 1
+            emit_progress(progress, "optimizer_step", step=steps,
+                          total_steps=total_steps, epoch=epoch + 1, every=progress_every)
         observed = evaluate(model, evaluation)
+        emit_progress(progress, "epoch_complete", step=steps,
+                      total_steps=total_steps, epoch=epoch + 1,
+                      validation_metric=observed["loss"])
         history.append({"epoch": epoch + 1,
                         "mean_training_batch_loss": aggregate /
                             math.ceil(len(training) / batch_size),
@@ -252,6 +264,8 @@ def main() -> None:
     parser.add_argument("--initialize-from")
     parser.add_argument("--allow-context-expansion", action="store_true",
                         help="Permit max_context-only increase while keeping weights")
+    parser.add_argument("--progress-jsonl", help="Optional exclusive measured training-step event file")
+    parser.add_argument("--progress-every", type=int, default=8)
     parser.add_argument("--replay")
     args = parser.parse_args()
     config = CogFuConfig(
@@ -264,7 +278,9 @@ def main() -> None:
                    batch_size=args.batch_size, learning_rate=args.learning_rate,
                    device=args.device, initialize_cortex=args.initialize_cortex,
                    initialize_from=args.initialize_from, replay_path=args.replay,
-                   allow_context_expansion=args.allow_context_expansion)
+                   allow_context_expansion=args.allow_context_expansion,
+                   progress_jsonl=args.progress_jsonl,
+                   progress_every=args.progress_every)
     print(json.dumps(result, indent=2))
 
 
