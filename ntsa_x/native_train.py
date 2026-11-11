@@ -16,6 +16,7 @@ import hashlib
 import torch
 from torch import nn
 from ntsa_x.native_model import ByteCodec, NativeConfig, NativeOrbitModel
+from ntsa_x.train_progress import open_progress, emit_progress
 
 
 def read_examples(path: str, codec: ByteCodec, context: int) -> list[tuple[list[int],list[int],str]]:
@@ -68,10 +69,13 @@ def evaluate(model,rows,batch_size,device):
 def train(*,train_path,eval_path,output,width=96,layers=2,
           max_context=1024,epochs=4,batch_size=4,lr=0.001,
           gradient_clip=1.0,seed=42,device="auto",
-          initialize_from=None,replay_path=None):
+          initialize_from=None,replay_path=None,
+          progress_jsonl=None,progress_every=8):
     if (not 1<=epochs<=100 or not 1<=batch_size<=128 or not 1e-7<=lr<=0.05
             or not 0.01<=gradient_clip<=100):
         raise ValueError("Invalid training hyperparameters")
+    if not isinstance(progress_every,int) or not 1<=progress_every<=10000:
+        raise ValueError("Invalid telemetry interval")
     if device not in ("auto","cpu","cuda"):
         raise ValueError("Unsupported training device")
     if device=="cuda" and not torch.cuda.is_available():
@@ -111,6 +115,8 @@ def train(*,train_path,eval_path,output,width=96,layers=2,
     best_weights={k:v.detach().cpu().clone()
                   for k,v in model.state_dict().items()}
     steps=0
+    total_steps=math.ceil(len(training)/batch_size)*epochs
+    progress=open_progress(progress_jsonl,total_steps=total_steps)
     for epoch in range(epochs):
         model.train()
         random.shuffle(training)
@@ -127,9 +133,13 @@ def train(*,train_path,eval_path,output,width=96,layers=2,
             optimizer.step()
             total_loss+=float(loss.detach().item())
             steps+=1
+            emit_progress(progress,"optimizer_step",step=steps,total_steps=total_steps,
+                          epoch=epoch+1,every=progress_every)
         after=evaluate(model,evaluation,batch_size,location)
         if not math.isfinite(after):
             raise RuntimeError("Non-finite held-out native loss")
+        emit_progress(progress,"epoch_complete",step=steps,total_steps=total_steps,
+                      epoch=epoch+1,validation_metric=after)
         history.append({"epoch":epoch+1,"mean_training_batch_loss":
                         total_loss/math.ceil(len(training)/batch_size),
                         "heldout_loss":after})
@@ -191,6 +201,8 @@ def main():
     parser.add_argument("--device",choices=["auto","cpu","cuda"],default="auto")
     parser.add_argument("--initialize-from",
                         help="Load existing native model weights for continued training")
+    parser.add_argument("--progress-jsonl",help="Optional exclusive measured training-step event file")
+    parser.add_argument("--progress-every",type=int,default=8)
     parser.add_argument("--replay",
                         help="Optional previously approved JSONL rehearsal dataset")
     args=parser.parse_args()
@@ -199,7 +211,8 @@ def main():
                            max_context=args.max_context,epochs=args.epochs,
                            batch_size=args.batch_size,lr=args.lr,seed=args.seed,
                            device=args.device,initialize_from=args.initialize_from,
-                           replay_path=args.replay),indent=2))
+                           replay_path=args.replay,progress_jsonl=args.progress_jsonl,
+                           progress_every=args.progress_every),indent=2))
 
 
 if __name__=="__main__":
