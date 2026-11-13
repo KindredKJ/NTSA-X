@@ -1,0 +1,120 @@
+{
+  "experiment": "kact-v0.1-synthetic-recall",
+  "seed": 213,
+  "train_steps_each": 100,
+  "train_examples": 160,
+  "heldout_examples": 64,
+  "data_sha256": "b500f5d42aa076b6e4dc4ef5b89882b476a691fe83be9573e296078d1fe867c4",
+  "environment": {
+    "python": "3.13.5",
+    "torch": "2.10.0+cpu",
+    "cpu": "unknown",
+    "device": "cpu",
+    "threads": 1
+  },
+  "results": {
+    "native_baseline": {
+      "trainable_params": 15705,
+      "total_params": 15705,
+      "initial_heldout": {
+        "accuracy": 0.53125,
+        "cross_entropy": 0.8649700433015823
+      },
+      "final_heldout": {
+        "accuracy": 1.0,
+        "cross_entropy": 0.0045237429440021515
+      },
+      "training_wall_s": 0.845751392000011,
+      "inference": {
+        "p50_ms": 1.5737815,
+        "p95_ms": 1.790978,
+        "dense_cell_calls": 15,
+        "logical_cell_updates": 15.0
+      }
+    },
+    "fixed_refine_no_memory": {
+      "trainable_params": 19673,
+      "total_params": 19706,
+      "initial_heldout": {
+        "accuracy": 0.703125,
+        "cross_entropy": 0.6329463124275208
+      },
+      "final_heldout": {
+        "accuracy": 0.8125,
+        "cross_entropy": 0.3596140369772911
+      },
+      "training_wall_s": 2.822677260999967,
+      "inference": {
+        "p50_ms": 5.7738185,
+        "p95_ms": 6.781016,
+        "dense_cell_calls": 45,
+        "logical_cell_updates": 45.0
+      }
+    },
+    "adaptive_no_coupling": {
+      "trainable_params": 19706,
+      "total_params": 19706,
+      "initial_heldout": {
+        "accuracy": 0.53125,
+        "cross_entropy": 0.8649700433015823
+      },
+      "final_heldout": {
+        "accuracy": 1.0,
+        "cross_entropy": 0.006279584602452815
+      },
+      "training_wall_s": 2.8147064379999165,
+      "inference": {
+        "p50_ms": 3.5817259999999997,
+        "p95_ms": 3.914607,
+        "dense_cell_calls": 27,
+        "logical_cell_updates": 27.0
+      }
+    },
+    "adaptive_coupling": {
+      "trainable_params": 19706,
+      "total_params": 19706,
+      "initial_heldout": {
+        "accuracy": 0.53125,
+        "cross_entropy": 0.8649700433015823
+      },
+      "final_heldout": {
+        "accuracy": 1.0,
+        "cross_entropy": 0.004782682517543435
+      },
+      "training_wall_s": 3.367949060000001,
+      "inference": {
+        "p50_ms": 3.0994200000000003,
+        "p95_ms": 3.596279,
+        "dense_cell_calls": 18,
+        "logical_cell_updates": 18.0
+      }
+    },
+    "adaptive_coupling_memory": {
+      "trainable_params": 19706,
+      "total_params": 19706,
+      "initial_heldout": {
+        "accuracy": 0.53125,
+        "cross_entropy": 0.8651874661445618
+      },
+      "final_heldout": {
+        "accuracy": 1.0,
+        "cross_entropy": 0.005739784566685557
+      },
+      "training_wall_s": 4.076691473999972,
+      "inference": {
+        "p50_ms": 5.978503,
+        "p95_ms": 6.329086,
+        "dense_cell_calls": 35,
+        "logical_cell_updates": 35.0
+      }
+    }
+  },
+  "limitations": [
+    "12-bit synthetic binary input, not natural language",
+    "one training seed, not variance estimate",
+    "batch-1 latency on single CPU, not general throughput",
+    "parameter counts differ; no matched-FLOP comparison",
+    "soft refinements always run in training",
+    "no PCK cross-process runtime integration"
+  ]
+}
