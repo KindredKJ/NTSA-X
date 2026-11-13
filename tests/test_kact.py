@@ -1,10 +1,16 @@
 """K-ACT interface, causality, gradient and early-exit regression tests."""
 import unittest
-import torch
-from ntsa_x.native_model import NativeConfig, NativeOrbitModel, ByteCodec
-from ntsa_x.kact import KACTConfig, KACTNativeOrbitModel, KACTState
+import importlib.util
+from unittest import skipUnless
+
+HAS_TORCH = importlib.util.find_spec("torch") is not None
+if HAS_TORCH:
+    import torch
+    from ntsa_x.native_model import NativeConfig, NativeOrbitModel, ByteCodec
+    from ntsa_x.kact import KACTConfig, KACTNativeOrbitModel, KACTState
 
 
+@skipUnless(HAS_TORCH, "Optional PyTorch is required for K-ACT tests")
 class KACTTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
