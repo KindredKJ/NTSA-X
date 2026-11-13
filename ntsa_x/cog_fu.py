@@ -286,7 +286,8 @@ class CogFuModel(nn.Module):
             return output
 
     def unified_draft(self, prefix: list[int], *, max_new_tokens: int = 48,
-                      temperature: float = 0.0, diffusion_mix: float = 0.5) -> list[int]:
+                      temperature: float = 0.0, diffusion_mix: float = 0.5,
+                      phase_trace: list[dict] | None = None) -> list[int]:
         """One recurrent cognitive trajectory that jointly decodes and denoises.
 
         At each step the same recurrent state supplies causal logits and
@@ -320,10 +321,13 @@ class CogFuModel(nn.Module):
                 causal_scores = causal_logits[0, -1, :].clone()
                 # Denoiser vocabulary is 263 including MASK; its output head
                 # has exactly the 262 original codec targets.
-                scores = ((1.0 - diffusion_mix) *
-                          F.log_softmax(causal_scores, dim=-1)
-                          + diffusion_mix *
-                          F.log_softmax(denoise_scores, dim=-1))
+                forward_log = F.log_softmax(causal_scores, dim=-1)
+                counter_log = F.log_softmax(denoise_scores, dim=-1)
+                # Independent native heads share the recurrent state. The
+                # denoising head challenges the causal hypothesis *before*
+                # a single fused token decision; no second generation cycle.
+                scores = ((1.0 - diffusion_mix) * forward_log
+                          + diffusion_mix * counter_log)
                 scores[[ByteCodec.PAD, ByteCodec.BOS, ByteCodec.USER,
                         ByteCodec.ASSISTANT, ByteCodec.SYSTEM]] = -torch.inf
                 if temperature == 0:
@@ -331,6 +335,22 @@ class CogFuModel(nn.Module):
                 else:
                     probs = F.softmax(scores / temperature, dim=-1)
                     token = int(torch.multinomial(probs, 1).item())
+                if phase_trace is not None:
+                    # Diagnostics describe internal head agreement only.
+                    # They are NOT proof that any byte is factually correct.
+                    forward_choice = int(forward_log.argmax().item())
+                    counter_choice = int(counter_log.argmax().item())
+                    phase_trace.append({
+                        "position": index,
+                        "forward_token": forward_choice,
+                        "counter_token": counter_choice,
+                        "chosen_token": token,
+                        "head_agreement": forward_choice == counter_choice,
+                        "forward_confidence": float(
+                            forward_log[forward_choice].exp().item()),
+                        "counter_confidence": float(
+                            counter_log[counter_choice].exp().item()),
+                    })
                 if token == ByteCodec.EOS:
                     break
                 if not 0 <= token < 256:
