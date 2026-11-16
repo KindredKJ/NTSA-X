@@ -139,6 +139,35 @@ guaranteed unlimited web search.
 
 Setup: [M16 browser web recall](docs/MILESTONE-16-BROWSER-WEB-RECALL.md).
 
+## Milestone 17 — Auxiliary projection-native diffusive cognition
+
+**Prototype status:** the current Milestone 17 code is a PDC denoising scaffold,
+not yet the locked Auxiliary input-membrane architecture. Auxiliary's agreed
+design routes experience into the PDC workspace first; the same X/Y/Z network
+perceives and reasons over its projections. See the
+[Auxiliary architecture contract](docs/AUXILIARY-ARCHITECTURE-CONTRACT.md).
+
+The scaffold extends NTSA-X with a jointly trained continuous latent
+projection denoiser over its recurrent X/Y/Z state. A bounded adaptive
+convergence loop allocates between the configured minimum and maximum PDC
+cycles, and the resolved projection conditions the same response model and
+unified cognition runtime. Existing COG-FU checkpoints transfer without
+overwriting; Auxiliary has a versioned checkpoint and training path.
+
+This first implementation scales **inference compute**, not parameter count:
+context processing remains linear in input length, PDC work scales with its
+bounded cycle count, and response decoding remains bounded by its answer
+window and denoising steps. It does not yet grow/prune modules, establish
+semantic convergence, or demonstrate general skill transfer. See
+[Milestone 17 design, scaling equations, and benchmarks](docs/MILESTONE-17-AUXILIARY-PDC.md).
+
+```bash
+python -m unittest discover -s tests -p test_auxiliary.py -v
+python -m ntsa_x.auxiliary_train --train .local/train.jsonl --eval .local/eval.jsonl --output .local/auxiliary-v0.1
+python -m examples.benchmark_auxiliary --checkpoint .local/auxiliary-v0.1 --cases .local/auxiliary-eval.jsonl --output .local/auxiliary-benchmark.json
+python -m examples.benchmark_auxiliary --checkpoint .local/auxiliary-v0.1 --cases .local/auxiliary-eval.jsonl --output .local/auxiliary-schedule-comparison.json --pdc-cycles 12 --compare-schedules
+```
+
 ## Milestone 15 — Unified cognition, background levels, memory and native extensions
 
 One checkpoint-preserving recurrent cognitive loop now decodes and denoises

@@ -102,6 +102,8 @@ jobs:
         run: python -m unittest discover -s tests -p 'test_native_model.py' -v
       - name: COG-FU joint cognition and diffusion integration tests
         run: python -m unittest discover -s tests -p 'test_cog_fu.py' -v
+      - name: Auxiliary PDC training, projection scaling, execution integration and benchmark tests
+        run: python -m unittest discover -s tests -p 'test_auxiliary.py' -v
       - name: COG-FU language acquisition, rights and ablation tests
         run: python -m unittest discover -s tests -p 'test_cog_fu_language.py' -v
       - name: Compare COG-FU recurrent/diffusion decode and detect repetition collapse

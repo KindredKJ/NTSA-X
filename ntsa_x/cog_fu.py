@@ -225,7 +225,8 @@ class CogFuModel(nn.Module):
         }
 
     def draft(self, prefix: list[int], *, max_new_tokens: int = 128,
-              temperature: float = 0.0, steps: int | None = None) -> list[int]:
+              temperature: float = 0.0, steps: int | None = None,
+              cached_context: Tensor | None = None) -> list[int]:
         """Iteratively reveal highest-confidence masked bytes, no teacher calls.
 
         An absorbing-mask schedule reveals additional positions each iteration.
@@ -245,7 +246,10 @@ class CogFuModel(nn.Module):
             prompt = torch.tensor([prefix], dtype=torch.long, device=device)
             draft = torch.full((1, max_new_tokens), MASK_ID,
                                device=device, dtype=torch.long)
-            cached_context = self.cognitive_context(prompt)
+            if cached_context is None:
+                cached_context = self.cognitive_context(prompt)
+            elif cached_context.shape != (1, self.config.width):
+                raise ValueError("Invalid cached cognitive state")
             for step in range(count):
                 remaining = draft.eq(MASK_ID)
                 n_remain = int(remaining.sum().item())
@@ -286,7 +290,8 @@ class CogFuModel(nn.Module):
             return output
 
     def unified_draft(self, prefix: list[int], *, max_new_tokens: int = 48,
-                      temperature: float = 0.0, diffusion_mix: float = 0.5) -> list[int]:
+                      temperature: float = 0.0, diffusion_mix: float = 0.5,
+                      cached_context: Tensor | None = None) -> list[int]:
         """One recurrent cognitive trajectory that jointly decodes and denoises.
 
         At each step the same recurrent state supplies causal logits and
@@ -306,6 +311,10 @@ class CogFuModel(nn.Module):
             causal_logits, states = self.cortex(prompt)
             joined = torch.cat([lane.flatten(1) for lane in states], dim=-1)
             context = self.context_projection(joined)
+            if cached_context is not None:
+                if cached_context.shape != context.shape:
+                    raise ValueError("Invalid cached cognitive state")
+                context = self.fuse_context(context, cached_context)
             output: list[int] = []
             for index in range(max_new_tokens):
                 # Partial sequence: previously emitted bytes plus the single
@@ -343,8 +352,14 @@ class CogFuModel(nn.Module):
                 causal_logits, states = self.cortex(next_token, states)
                 joined = torch.cat(
                     [lane.flatten(1) for lane in states], dim=-1)
-                context = self.context_projection(joined)
+                context = self.fuse_context(
+                    self.context_projection(joined), cached_context)
             return output
+
+    def fuse_context(self, recurrent_context: Tensor,
+                     auxiliary_context: Tensor | None) -> Tensor:
+        """Hook for additive cognitive workspaces; baseline remains unchanged."""
+        return recurrent_context if auxiliary_context is None else recurrent_context
 
     def generate(self, prefix: list[int], *, max_new_tokens=128,
                  temperature=0.0) -> Iterator[int]:
