@@ -1,0 +1,72 @@
+name: Krystal checkpoint training and repeatability
+
+on:
+  push:
+    paths:
+      - 'examples/train_krystal_checkpoint.py'
+      - '.github/workflows/krystal_checkpoint.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  train-and-retest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU PyTorch
+        run: python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch>=2.6,<3"
+      - name: Create versioned initial and trained NTSA-X checkpoints from real project text
+        run: python -m examples.train_krystal_checkpoint --output-dir krystal-checkpoints --steps 40 --seed 7
+      - name: Re-run original nine probes with exact initial checkpoint
+        run: python -m examples.benchmark_krystal_9 --checkpoint krystal-checkpoints/baseline --output krystal-baseline-repeat.json --seed 7 --max-new-tokens 20
+      - name: Repeat same nine probes with genuinely trained checkpoint
+        run: python -m examples.benchmark_krystal_9 --checkpoint krystal-checkpoints/trained --output krystal-trained-repeat.json --seed 7 --max-new-tokens 20
+      - name: Verify all 18 executed probes and compare scores
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          baseline=json.loads(Path("krystal-baseline-repeat.json").read_text())
+          trained=json.loads(Path("krystal-trained-repeat.json").read_text())
+          assert baseline["total_tests"]==9 and trained["total_tests"]==9
+          assert baseline["weight_source"]=="provided_checkpoint"
+          assert trained["weight_source"]=="provided_checkpoint"
+          assert baseline["weights_sha256"]!=trained["weights_sha256"], "No weight update"
+          assert [(x["round"],x["test"],x["question"],x["expected"])
+                  for x in baseline["results"]]==[
+                  (x["round"],x["test"],x["question"],x["expected"])
+                  for x in trained["results"]], "Test protocol changed"
+          report={
+              "description":"Real COG-FU checkpoint creation and held-out three-round re-test",
+              "baseline_correct":baseline["exact_matches"],
+              "trained_correct":trained["exact_matches"],
+              "tested_each":9,
+              "trained_minus_baseline":trained["exact_matches"]-baseline["exact_matches"],
+              "checkpoint_hashes":{
+                  "baseline":baseline["weights_sha256"],
+                  "trained":trained["weights_sha256"]
+              },
+              "trained_performance_claim":"research diagnostic only, not frontier evaluation",
+          }
+          Path("krystal-checkpoint-comparison.json").write_text(
+              json.dumps(report,indent=2)+"\n")
+          print("CHECKPOINT_COMPARISON "+json.dumps(report),flush=True)
+          PY
+      - name: Archive checkpoint weights, provenance, and both real test records
+        uses: actions/upload-artifact@v4
+        with:
+          name: krystal-trained-checkpoint-3x3-${{ github.run_id }}
+          path: |
+            krystal-checkpoints/
+            krystal-baseline-repeat.json
+            krystal-trained-repeat.json
+            krystal-checkpoint-comparison.json
+          retention-days: 14
+          if-no-files-found: error
