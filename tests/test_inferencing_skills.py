@@ -79,14 +79,20 @@ class EvidenceLedgerTests(TestCase):
         with TemporaryDirectory() as root:
             ledger=SkillLedger(Path(root)/"state.db")
             trace=insert(ledger,"rotate-right",1,4)
-            def record(prediction):
+            def record(prediction, baseline=None):
                 return ledger.event("inference",{"prediction":prediction,
+                    "seed":213,"architecture":"fixture-probe",
+                    "counterfactual_prediction":baseline,
+                    "counterfactual_seed":213 if baseline is not None else None,
+                    "counterfactual_protocol":"auxiliary-native-paired-v1" if baseline is not None else None,
+                    "counterfactual_model_architecture":"fixture-probe" if baseline is not None else None,
+                    "counterfactual_before_outcome":baseline is not None,
                     "used":[{"skill_id":trace.skill_id,"trace_ids":[trace.trace_id],"fit":.75}]})
-            a=ledger.observe(record("100"),observed="100",baseline="000",evidence_source="independent")
+            a=ledger.observe(record("100","000"),observed="100",baseline="000",evidence_source="independent",outcome_verified=True)
             self.assertEqual(a["attribution"],"positive")
-            b=ledger.observe(record("100"),observed="100",baseline="100",evidence_source="independent")
+            b=ledger.observe(record("100","100"),observed="100",baseline="100",evidence_source="independent",outcome_verified=True)
             self.assertEqual(b["attribution"],"provisional")
-            c=ledger.observe(record("000"),observed="100",baseline="100",evidence_source="independent")
+            c=ledger.observe(record("000","100"),observed="100",baseline="100",evidence_source="independent",outcome_verified=True)
             self.assertEqual(c["attribution"],"negative")
             d=ledger.observe(record("100"),observed="100",baseline=None,evidence_source="unknown")
             self.assertEqual(d["attribution"],"provisional")
