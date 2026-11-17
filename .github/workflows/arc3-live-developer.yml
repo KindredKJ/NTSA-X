@@ -1,0 +1,54 @@
+name: ARC-AGI-3 live official SDK developer attempt
+on:
+  push:
+    branches: [research/arc3-real-sdk-agent-20261102]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  arc3-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Verify native policy without external service
+        run: python -m unittest discover -s tests -p 'test_arc3_live_agent.py' -v
+      - name: Install official ARC-AGI-3 SDK
+        run: python -m pip install arc-agi
+      - name: Execute official interactive game without model provider
+        id: runagent
+        continue-on-error: true
+        run: |
+          python -m ntsa_x.arc3_live_agent --game ls20 --steps 30 --seed 23 --output arc3-live-developer-report.json
+      - name: Independently record execution status and repository revision
+        if: always()
+        run: |
+          git rev-parse HEAD > kindred_commit.txt
+          python -VV > python_version.txt
+          if test -f arc3-live-developer-report.json; then
+            sha256sum arc3-live-developer-report.json ntsa_x/arc3_live_agent.py > evidence_hashes.sha256
+            python - <<'PY'
+          import json
+          p = json.load(open("arc3-live-developer-report.json"))
+          print("REAL_ARC_AGI3_SDK_STATUS:", p["status"])
+          print("REAL_ARC_AGI3_SDK_SCORE:", p["score"])
+          print("REAL_ARC_AGI3_SDK_ACTIONS:", p["steps_executed"])
+          PY
+          else
+            echo "Official SDK invocation did not produce a result file" > sdk_failure.txt
+          fi
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: kindred-arc3-sdk-developer-${{ github.run_id }}
+          path: |
+            arc3-live-developer-report.json
+            kindred_commit.txt
+            python_version.txt
+            evidence_hashes.sha256
+            sdk_failure.txt
+          retention-days: 30
+          if-no-files-found: error
