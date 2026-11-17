@@ -63,8 +63,14 @@ class NeuralHeadTests(TestCase):
             state_transition=[0.]*24,shape=(3,8),operation="rotate-right",
             conditions={"bits":3},action="001",outcome={"next":"100"},
             evidence={"attributable":True},provenance="fixture")
-        def stage(pred):
+        def stage(pred, baseline):
             receipt=ledger.event("inference",{"prediction":pred,
+                "seed":213,"architecture":"fixture-probe",
+                "counterfactual_prediction":baseline,
+                "counterfactual_seed":213,
+                "counterfactual_protocol":"auxiliary-native-paired-v1",
+                "counterfactual_model_architecture":"fixture-probe",
+                "counterfactual_before_outcome":True,
                 "used":[{"skill_id":trace.skill_id,"trace_ids":[trace.trace_id]}]})
             ledger.event("neural_training_staged",{
                 "inference_id":receipt,"current_state":[.2]*24,
@@ -72,14 +78,14 @@ class NeuralHeadTests(TestCase):
                     "metadata":[1.,1.,1.,1.,.5],"selected":True}],
                 "labels_available":False})
             return receipt
-        positive=stage("100")
+        positive=stage("100","000")
         with self.assertRaises(ValueError):
             evidence_training_pairs(ledger)
-        ledger.observe(positive,observed="100",baseline="000",evidence_source="test")
-        provisional=stage("100")
-        ledger.observe(provisional,observed="100",baseline="100",evidence_source="test")
-        negative=stage("000")
-        ledger.observe(negative,observed="100",baseline="100",evidence_source="test")
+        ledger.observe(positive,observed="100",baseline="000",evidence_source="test",outcome_verified=True)
+        provisional=stage("100","100")
+        ledger.observe(provisional,observed="100",baseline="100",evidence_source="test",outcome_verified=True)
+        negative=stage("000","100")
+        ledger.observe(negative,observed="100",baseline="100",evidence_source="test",outcome_verified=True)
         data=evidence_training_pairs(ledger)
         self.assertEqual(data["label"].tolist(),[1.,0.])
         ledger.close()
