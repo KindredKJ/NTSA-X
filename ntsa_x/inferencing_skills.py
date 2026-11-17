@@ -147,9 +147,12 @@ class SkillLedger:
         return (1 + row[0]) / (2 + row[0] + row[1]), row[0], row[1]
 
     def observe(self, inference_id: str, *, observed: str, baseline: str | None,
-                evidence_source: str, confounded: bool = False) -> dict:
+                evidence_source: str, confounded: bool = False,
+                outcome_verified: bool = False) -> dict:
         if not evidence_source:
             raise ValueError("Outcome evidence provenance is required")
+        if type(outcome_verified) is not bool:
+            raise ValueError("outcome_verified must be a bool")
         if self.db.execute("SELECT 1 FROM outcomes WHERE inference_id=?", (inference_id,)).fetchone():
             raise ValueError("Outcome already committed; no duplicate reinforcement")
         row = self.db.execute("SELECT document FROM events WHERE event_id=? AND kind='inference'",
@@ -157,9 +160,19 @@ class SkillLedger:
         if not row:
             raise ValueError("Unknown inference receipt")
         event = json.loads(row[0])
-        comparison_known = baseline is not None and not confounded
+        # Only a native pre-outcome paired decoder result may constitute the
+        # baseline. Caller-provided strings cannot independently establish gain.
+        recorded = event.get("counterfactual_prediction")
+        trusted = (recorded is not None and
+                   event.get("counterfactual_protocol") == "auxiliary-native-paired-v1" and
+                   event.get("counterfactual_seed") == event.get("seed") and
+                   event.get("counterfactual_before_outcome") is True and
+                   event.get("counterfactual_model_architecture") == event.get("architecture"))
+        if trusted and baseline is not None and baseline != recorded:
+            raise ValueError("Caller baseline differs from native paired result")
+        comparison_known = trusted and outcome_verified and not confounded
         assisted = event["prediction"] == observed
-        unassisted = baseline == observed if baseline is not None else None
+        unassisted = recorded == observed if trusted else None
         attribution = ("positive" if comparison_known and assisted and not unassisted else
                        "negative" if comparison_known and unassisted and not assisted else
                        "provisional")
@@ -180,7 +193,10 @@ class SkillLedger:
                     update.append({"skill_id": trace.skill_id, "trace_id": trace_id,
                                    "classification": attribution})
         receipt = {"inference_id": inference_id, "observed": observed,
-                   "comparison_baseline": baseline, "evidence_source": evidence_source,
+                   "comparison_baseline": recorded if trusted else None,
+                   "counterfactual_verified_in_receipt": bool(trusted),
+                   "outcome_verified": outcome_verified,
+                   "evidence_source": evidence_source,
                    "confounded": confounded, "attribution": attribution, "updates": update}
         self.db.execute("INSERT INTO outcomes VALUES(?,?)", (inference_id, _json(receipt)))
         self.db.commit()
@@ -255,7 +271,8 @@ class RecallBeforeInference:
 
     def infer(self, prefix: list[int], *, operation: str, conditions: dict,
               seed: int = 0, max_new_tokens: int = 32,
-              memory_mode: str = "consolidated") -> tuple[list[int], dict]:
+              memory_mode: str = "consolidated",
+              measure_counterfactual: bool = False) -> tuple[list[int], dict]:
         """Only prior evidence may influence this inference; never future outcomes."""
         import torch
         from .cog_fu import CogFuModel
@@ -277,6 +294,7 @@ class RecallBeforeInference:
             selected = [c for c in considered if c["eligible"]]
             selected.sort(key=lambda c: (-c["fit"], c["trace_id"]))
             selected = selected[:3]
+            unmodified_projection = projection.clone()
             if selected and self.max_influence:
                 traces = {t.trace_id: t for t in self.ledger.get_traces()}
                 weighted = torch.zeros_like(projection)
@@ -300,9 +318,24 @@ class RecallBeforeInference:
             # not a second solver, independent assistant, or answer cache.
             context = self.model.projected_context(projection)
             self.model.last_projection_receipt = receipt
-            output = CogFuModel.unified_draft(self.model, prefix,
-                        max_new_tokens=max_new_tokens, temperature=0.0,
-                        cached_context=context)
+            counterfactual_prediction = None
+            counterfactual_ns = 0
+            if measure_counterfactual and selected:
+                baseline_context = self.model.projected_context(unmodified_projection)
+                paired_start = perf_counter_ns()
+                with torch.random.fork_rng(devices=[]):
+                    torch.manual_seed(seed)
+                    baseline_output = CogFuModel.unified_draft(
+                        self.model, prefix, max_new_tokens=max_new_tokens,
+                        temperature=0.0, cached_context=baseline_context)
+                counterfactual_prediction = bytes(baseline_output).decode(
+                    "utf-8", errors="replace")
+                counterfactual_ns = perf_counter_ns()-paired_start
+            with torch.random.fork_rng(devices=[]):
+                torch.manual_seed(seed)
+                output = CogFuModel.unified_draft(
+                    self.model, prefix, max_new_tokens=max_new_tokens,
+                    temperature=0.0, cached_context=context)
             prediction = bytes(output).decode("utf-8", errors="replace")
             self.ledger.event("prediction_generated", {"prediction": prediction, "seed": seed})
             inference_payload = {"architecture": self.model.architecture,
@@ -312,7 +345,15 @@ class RecallBeforeInference:
                                  "retrieval_ns": retrieval_ns,
                                  "inference_ns": perf_counter_ns()-start,
                                  "pdc": receipt.to_dict(),
-                                 "counterfactual_prediction": None,
+                                 "seed": seed,
+                                 "counterfactual_prediction": counterfactual_prediction,
+                                 "counterfactual_protocol": (
+                                     "auxiliary-native-paired-v1" if counterfactual_prediction is not None else None),
+                                 "counterfactual_seed": (seed if counterfactual_prediction is not None else None),
+                                 "counterfactual_model_architecture": (
+                                     self.model.architecture if counterfactual_prediction is not None else None),
+                                 "counterfactual_before_outcome": counterfactual_prediction is not None,
+                                 "counterfactual_ns": counterfactual_ns,
                                  "attribution": "not_yet_observed"}
             inference_id = self.ledger.event("inference", inference_payload)
             stage = getattr(self, "_stage_neural_training", None)
