@@ -18,6 +18,8 @@ def _wilson_upper(errors: int, count: int, z: float = 1.96) -> float:
 
 def calibrate_and_activate(head: NeuralSkillHead, heldout: dict, *,
                            independently_labelled: bool,
+                           blind: dict | None = None,
+                           blind_independently_labelled: bool = False,
                            minimum_recall: float=.8,
                            maximum_false_application: float=.02,
                            minimum_each_label: int=40) -> dict:
@@ -88,8 +90,53 @@ def calibrate_and_activate(head: NeuralSkillHead, heldout: dict, *,
             "useful_recall":round(best[1],8) if best else None,
             "observed_false_application":round(best[2],8) if best else None,
             "false_application_upper_95":round(best[3],8) if best else None}
+    # Choosing a threshold on calibration is NOT independent confirmation.
     if best:
-        head.activation_certified=True
-        head.activation_threshold=float(best[0])
+        report["calibration_candidate_threshold"]=round(best[0],8)
+        if blind is None or not blind_independently_labelled:
+            report["reason"]="independent_blind_confirmation_required"
+        elif set(blind)!=set(heldout):
+            report["reason"]="blind_schema_incompatible"
+        else:
+            blind_labels=blind["label"].detach().cpu()
+            bp=int((blind_labels==1).sum())
+            bn=int((blind_labels==0).sum())
+            if min(bp,bn)<minimum_each_label:
+                report["reason"]="insufficient_blind_positive_or_negative_support"
+            elif (len(blind_labels)!=len(blind["current"]) or
+                  len(blind_labels)!=len(blind["prior"]) or
+                  len(blind_labels)!=len(blind["metadata"]) or
+                  not bool(((blind_labels==0)|(blind_labels==1)).all())):
+                report["reason"]="invalid_blind_labels_or_shapes"
+            else:
+                seen_blind=set()
+                duplicated=False
+                for i in range(len(blind_labels)):
+                    payload=b"".join(blind[k][i].detach().contiguous().cpu().numpy().tobytes()
+                                     for k in ("current","prior","metadata"))
+                    digest=sha256(payload).hexdigest()
+                    if digest in seen or digest in seen_blind:
+                        duplicated=True
+                    seen_blind.add(digest)
+                if duplicated:
+                    report["reason"]="blind_not_disjoint_or_has_duplicate_features"
+                else:
+                    with torch.no_grad():
+                        bs=head.score(*(blind[k].to(device) for k in
+                                        ("current","prior","metadata"))).detach().cpu()
+                    applied=bs>=best[0]
+                    recall=float(applied[blind_labels==1].float().mean())
+                    false=int(applied[blind_labels==0].sum())
+                    upper=_wilson_upper(false,bn)
+                    report["blind"]={"positive_count":bp,"negative_count":bn,
+                                     "useful_recall":round(recall,8),
+                                     "false_application":round(false/bn,8),
+                                     "false_application_upper_95":round(upper,8)}
+                    if recall>=minimum_recall and upper<=maximum_false_application:
+                        head.activation_certified=True
+                        head.activation_threshold=float(best[0])
+                    else:
+                        report["reason"]="independent_blind_did_not_confirm_calibration"
+    report["approved"]=bool(head.activation_certified)
     head.calibration_report=report
     return report
