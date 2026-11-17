@@ -2,13 +2,14 @@
 import importlib.util
 import unittest
 
-import torch
+HAS_TORCH = importlib.util.find_spec("torch") is not None
+if HAS_TORCH:
+    import torch
+    from plugcore import PlugCoreBank, PlugCoreTrainer, SkillSpec
 
-from plugcore import PlugCoreBank, PlugCoreTrainer, SkillSpec
 
-
-@unittest.skipUnless(importlib.util.find_spec("ntsa_x"),
-                     "NTSA-X must be importable to run upstream integration")
+@unittest.skipUnless(HAS_TORCH and importlib.util.find_spec("ntsa_x"),
+                     "Real upstream integration requires NTSA-X and optional PyTorch")
 class ActualNTSAIntegrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
