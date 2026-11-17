@@ -93,6 +93,21 @@ class CalibrationTests(unittest.TestCase):
         self.assertEqual(result["feature_collisions"],60)
         self.assertFalse(head.activation_certified)
 
+    def test_calibration_needs_independent_blind_confirmation(self):
+        head=self.head()
+        calibration=samples(911,60)
+        preliminary=calibrate_and_activate(head,calibration,independently_labelled=True)
+        self.assertFalse(preliminary["approved"])
+        self.assertEqual(preliminary["reason"],"independent_blind_confirmation_required")
+        verified=calibrate_and_activate(head,calibration,independently_labelled=True,
+            blind=samples(1911,60),blind_independently_labelled=True)
+        self.assertTrue(verified["approved"],verified)
+        self.assertTrue(head.activation_certified)
+        repeated=calibrate_and_activate(head,calibration,independently_labelled=True,
+            blind=calibration,blind_independently_labelled=True)
+        self.assertFalse(repeated["approved"])
+        self.assertEqual(repeated["reason"],"blind_not_disjoint_or_has_duplicate_features")
+
     def test_external_label_trust_is_required(self):
         head=self.head()
         result=calibrate_and_activate(head,samples(81,60),
