@@ -315,4 +315,9 @@ class RecallBeforeInference:
                                  "counterfactual_prediction": None,
                                  "attribution": "not_yet_observed"}
             inference_id = self.ledger.event("inference", inference_payload)
+            stage = getattr(self, "_stage_neural_training", None)
+            if stage is not None:
+                # The already-scanned latent state is staged before any outcome
+                # observation; this never performs an online learning update.
+                stage(inference_id, state, considered, selected)
             return output, {"inference_id": inference_id, **inference_payload}
