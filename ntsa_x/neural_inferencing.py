@@ -39,6 +39,9 @@ class NeuralSkillHead(nn.Module):
             nn.Linear(config.hidden, config.hidden // 2), nn.SiLU(),
             nn.Linear(config.hidden // 2, 1))
         self.register_buffer("trained_examples", torch.zeros((), dtype=torch.long))
+        self.activation_certified = False
+        self.activation_threshold = config.threshold
+        self.calibration_report = None
 
     def forward(self, current: Tensor, prior: Tensor, metadata: Tensor) -> Tensor:
         d = self.config.width
@@ -103,6 +106,13 @@ class NeuralRecallBeforeInference(RecallBeforeInference):
             for item in candidates:
                 item["fit_source"]="untrained-explicit-relevance-fallback"
             return candidates
+        if not self.head.activation_certified:
+            candidates=super().assess(state,operation,conditions)
+            for item in candidates:
+                item["eligible"]=False
+                item["reasons"].append("neural_calibration_required")
+                item["fit_source"]="trained-neural-not-independent-validated"
+            return candidates
         old=self.fit_threshold
         self.fit_threshold=1e-9
         try:
@@ -134,7 +144,7 @@ class NeuralRecallBeforeInference(RecallBeforeInference):
             fit=float(score)*trace.confidence if compatible else 0.
             candidate["neural_fit"]=round(float(score),8)
             candidate["fit"]=round(fit,8)
-            candidate["eligible"]=compatible and fit>=self.neural_threshold
+            candidate["eligible"]=compatible and fit>=self.head.activation_threshold
             candidate["fit_source"]="neural-parameters-and-recorded-evidence"
         candidates.sort(key=lambda c:(-c["fit"],c["trace_id"]))
         return candidates
@@ -166,7 +176,10 @@ def evidence_training_pairs(ledger)->dict[str,Tensor]:
             if e["kind"]=="neural_training_staged"}
     rows=[]
     for event in ledger.events():
-        if event["kind"]!="outcome_observed" or event["attribution"] not in ("positive","negative"):
+        if (event["kind"]!="outcome_observed" or
+                event["attribution"] not in ("positive","negative") or
+                event.get("counterfactual_verified_in_receipt") is not True or
+                event.get("outcome_verified") is not True):
             continue
         current=staged.get(event["inference_id"])
         if not current:
@@ -202,6 +215,8 @@ def train_skill_head(head:NeuralSkillHead,train:dict[str,Tensor],*,
         raise ValueError("Inconsistent training rows")
     if not torch.all((train["label"]==0)|(train["label"]==1)):
         raise ValueError("Expected binary applicability labels")
+    head.activation_certified = False
+    head.calibration_report = None
     old_determinism=torch.are_deterministic_algorithms_enabled()
     torch.use_deterministic_algorithms(True)
     head.train()
@@ -241,7 +256,10 @@ def save_skill_head(head:NeuralSkillHead,path:str|Path,*,
     torch.save(head.state_dict(),target/"skill-head.pt")
     info={"schema_version":1,"module":"AuxiliaryModel.inferencing_skill_head",
           "config":asdict(head.config),"base_checkpoint_sha256":base_checkpoint_sha256,
-          "trained_examples":int(head.trained_examples.item()),"provenance":provenance}
+          "trained_examples":int(head.trained_examples.item()),"provenance":provenance,
+          "calibration":{"approved":bool(head.activation_certified),
+                         "threshold":float(head.activation_threshold),
+                         "report":head.calibration_report}}
     (target/"config.json").write_text(json.dumps(info,indent=2,sort_keys=True)+"\n",
                                       encoding="utf-8")
 
@@ -259,4 +277,8 @@ def load_skill_head(model,path:str|Path,*,base_checkpoint_sha256:str)->NeuralSki
     head.load_state_dict(weights,strict=True)
     if not int(head.trained_examples.item()):
         raise ValueError("Neural head contains no trained examples")
+    calibration=info.get("calibration") or {}
+    head.activation_certified=bool(calibration.get("approved",False))
+    head.activation_threshold=float(calibration.get("threshold",cfg.threshold))
+    head.calibration_report=calibration.get("report")
     return head
