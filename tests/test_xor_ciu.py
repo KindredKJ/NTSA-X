@@ -85,5 +85,50 @@ class XorCIUTests(unittest.TestCase):
             self.assertEqual(store.stats()["nodes"], 0)
 
 
+    def test_recursive_receipts(self):
+        paired = ConvergenceEngine().evaluate([
+            Check(category, True, "unit-test fixture",
+                  external=category == "evidence")
+            for category in REQUIRED_CHECKS
+        ], forward={"state": 15}, reverse={"state": 15})
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "recursive.db"
+            with NexusStore(path) as store:
+                ciu = NexusXorCIU(store)
+                common = dict(context_id="chain", revision="v1", report=paired)
+                a = ciu.record(width=8, initial=0, terminal=3, masks=[1, 2],
+                               verify=lambda s: s == 3, **common)
+                b = ciu.record(width=8, initial=3, terminal=7, masks=[4],
+                               verify=lambda s: s == 7, **common)
+                c = ciu.record(width=8, initial=7, terminal=15, masks=[8],
+                               verify=lambda s: s == 15, **common)
+                ab = ciu.compose_receipts([a, b], initial=0,
+                                         verify=lambda s: s == 7, **common)
+                abc = ciu.compose_receipts([ab, c], initial=0,
+                                          verify=lambda s: s == 15, **common)
+                self.assertEqual(store.read(abc).payload["count"], 4)
+                self.assertEqual(store.read(abc).parents, (ab, c))
+                for members in [[], [b, a], [a, c], ["0" * 64]]:
+                    with self.assertRaises(ValueError):
+                        ciu.compose_receipts(members, initial=0,
+                                             verify=lambda s: True, **common)
+                with self.assertRaises(ValueError):
+                    ciu.compose_receipts([a, b], initial=0,
+                                         verify=lambda s: False, **common)
+                with self.assertRaises(ValueError):
+                    ciu.compose_receipts([a, b], initial=0,
+                                         verify=lambda s: True,
+                                         **(common | {"revision": "v2"}))
+                with self.assertRaises(ValueError):
+                    ciu.compose_receipts([a, b], initial=0,
+                                         verify=lambda s: True,
+                                         **(common | {"report": fixture_report()}))
+            with NexusStore(path) as store:
+                self.assertEqual(NexusXorCIU(store).replay(
+                    abc, initial=0, context_id="chain", revision="v1",
+                    verify=lambda s: s == 15), 15)
+                self.assertTrue(store.verify(abc))
+
+
 if __name__ == "__main__":
     unittest.main()
