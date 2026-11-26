@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from math import isfinite
 from sys import getsizeof
 from threading import RLock
-from time import perf_counter_ns
+from time import perf_counter_ns, time_ns
+import sqlite3
 
 from .capability_ciu import BinaryTask, CapabilityRuntime
 from .xor_ciu import _bits
@@ -23,13 +24,14 @@ class Observation:
 class FeedbackRuntime:
     """Adapt per batch without shadow recomputation or new rule promotion.
 
-    Timing estimates are session-local. A verified rule is read at every batch
+    Timing estimates are session-local unless environment is provided. A verified rule is read at every batch
     boundary; cached tables are discarded when the receipt changes. The task
     must remain pure and its revision must reflect implementation changes.
     """
     def __init__(self, runtime: CapabilityRuntime, task: BinaryTask, *,
                  table_budget_bytes: int = 0, explore_every: int = 16,
-                 alpha: float = 0.5):
+                 alpha: float = 0.5, environment: str | None = None,
+                 max_age_s: int = 86400):
         if not isinstance(runtime, CapabilityRuntime) or not isinstance(task, BinaryTask):
             raise TypeError('runtime and task required')
         if type(table_budget_bytes) is not int or not 0 <= table_budget_bytes <= 1048576:
@@ -38,12 +40,50 @@ class FeedbackRuntime:
             raise ValueError('invalid exploration interval')
         if type(alpha) not in (int, float) or not isfinite(alpha) or not 0 < alpha <= 1:
             raise ValueError('invalid alpha')
+        if environment is not None and (not isinstance(environment, str) or not 1 <= len(environment) <= 128):
+            raise ValueError('invalid environment identity')
+        if type(max_age_s) is not int or not 1 <= max_age_s <= 604800:
+            raise ValueError('invalid timing retention')
+        self.environment, self.max_age_ns = environment, max_age_s * 10**9
         self.runtime, self.task = runtime, task
         self.budget, self.interval, self.alpha = table_budget_bytes, explore_every, alpha
         self._lock = RLock()
         self._receipt = self._table = None
         self._estimates = {}
         self._batches = self._explore_index = 0
+        if environment is not None:
+            with runtime.store._lock:
+                runtime.store._db.execute('''CREATE TABLE IF NOT EXISTS ciu_timing_profile (
+                    name TEXT, revision TEXT, width INTEGER, receipt TEXT,
+                    environment TEXT, batch_size INTEGER, budget INTEGER,
+                    method TEXT, ns REAL, updated_ns INTEGER,
+                    PRIMARY KEY(name,revision,width,receipt,environment,batch_size,budget,method))''')
+
+    def _profile_key(self, size):
+        return (self.task.name, self.task.revision, self.task.width,
+                self._receipt or '', self.environment, size, self.budget)
+
+    def _load_profile(self, size, names):
+        now = time_ns()
+        with self.runtime.store._lock:
+            rows = self.runtime.store._db.execute(
+                'SELECT method,ns,updated_ns FROM ciu_timing_profile WHERE '
+                'name=? AND revision=? AND width=? AND receipt=? AND environment=? '
+                'AND batch_size=? AND budget=?', self._profile_key(size)).fetchall()
+        return {method: cost for method, cost, stamp in rows
+                if method in names and isinstance(cost, (int, float))
+                and isfinite(cost) and cost > 0 and type(stamp) is int
+                and 0 <= now - stamp <= self.max_age_ns}
+
+    def _save_profile(self, size, method, cost):
+        now = time_ns()
+        with self.runtime.store._lock:
+            self.runtime.store._db.execute('''INSERT INTO ciu_timing_profile
+                VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO UPDATE SET
+                ns=CASE WHEN updated_ns BETWEEN ? AND ? AND ns>0 AND ns<1e18
+                THEN ? * excluded.ns + (1-?) * ns ELSE excluded.ns END,
+                updated_ns=excluded.updated_ns''', (*self._profile_key(size), method,
+                max(cost, 1e-9), now, now - self.max_age_ns, now, self.alpha, self.alpha))
 
     @property
     def estimates(self):
@@ -92,8 +132,16 @@ class FeedbackRuntime:
                     if self._table is not None:
                         methods['table'] = self._table.__getitem__
             names = tuple(methods)
+            if self.environment is not None:
+                try:
+                    self._estimates = self._load_profile(len(values), names)
+                except sqlite3.Error:
+                    self._estimates = {}
             unseen = [name for name in names if name not in self._estimates]
-            exploratory = bool(unseen) or (self._batches % self.interval == 0 and len(names) > 1)
+            due = self._batches % self.interval == 0
+            if self.environment is not None and self._batches == 0:
+                due = False
+            exploratory = bool(unseen) or (due and len(names) > 1)
             if unseen:
                 chosen = unseen[0]
             elif exploratory:
@@ -108,6 +156,11 @@ class FeedbackRuntime:
             cost = elapsed / len(values)
             old = self._estimates.get(chosen, cost)
             self._estimates[chosen] = self.alpha * cost + (1 - self.alpha) * old
+            if self.environment is not None:
+                try:
+                    self._save_profile(len(values), chosen, cost)
+                except sqlite3.Error:
+                    pass  # Non-authoritative telemetry must not block results.
             self._batches += 1
             return Observation(chosen, result, elapsed, prepared,
                                len(values) if chosen == 'original' else 0, exploratory)
