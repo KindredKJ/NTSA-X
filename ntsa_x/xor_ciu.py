@@ -128,3 +128,59 @@ class NexusXorCIU:
         if hex(terminal) != p["terminal"] or verify(terminal) is not True:
             return None
         return terminal
+
+    def compose_receipts(self, receipts: Iterable[str], *, initial: int,
+                         context_id: str, revision: str,
+                         report: ConvergenceReport,
+                         verify: Callable[[int], bool]) -> str:
+        """Compose an ordered chain of input-bound, compatible Nexus receipts.
+
+        Original traces are not expanded. Every receipt must match the current
+        intermediate state and rule context. Caller independently verifies the
+        composite outcome; parent hash integrity is not semantic evidence.
+        """
+        _label(context_id)
+        _label(revision)
+        if (not isinstance(report, ConvergenceReport) or not report.converged
+                or not report.external_evidence
+                or report.counter_orbit_agreement is not True):
+            raise ValueError("verified composite with paired agreement required")
+        ordered = []
+        combined = None
+        state = initial
+        digest = sha256(b"ntsa-x/xor-ciu/composite/v1\0")
+        for receipt in receipts:
+            if len(ordered) >= 4096:
+                raise ValueError("too many direct members; compose in groups")
+            if not isinstance(receipt, str) or len(receipt) != 64:
+                raise ValueError("invalid receipt")
+            node = self.store.read(receipt)
+            if node is None:
+                raise ValueError("missing receipt")
+            p = node.payload
+            if (p.get("kind") != KIND or p.get("context_id") != context_id
+                    or p.get("revision") != revision):
+                raise ValueError("incompatible receipt context")
+            transition = XorTransition(p["width"], int(p["mask"], 16), p["count"])
+            _bits(state, transition.width)
+            if hex(state) != p["initial"]:
+                raise ValueError("discontinuous trajectory")
+            state = transition.apply(state)
+            if hex(state) != p["terminal"]:
+                raise ValueError("invalid member terminal")
+            combined = transition if combined is None else combined.then(transition)
+            ordered.append(receipt)
+            digest.update(bytes.fromhex(receipt))
+        if combined is None:
+            raise ValueError("empty composite")
+        if combined.apply(initial) != state or verify(state) is not True:
+            raise ValueError("composite verification failed")
+        payload = {
+            "kind": KIND, "context_id": context_id, "revision": revision,
+            "width": combined.width, "initial": hex(initial),
+            "terminal": hex(state), "mask": hex(combined.mask),
+            "count": combined.count, "trace_digest": digest.hexdigest(),
+            "trace_kind": "ordered_receipts/v1", "members": ordered,
+        }
+        return self.store.append(payload, report=report,
+                                 parents=tuple(dict.fromkeys(ordered))).digest
