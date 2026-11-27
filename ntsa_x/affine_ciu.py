@@ -25,10 +25,20 @@ class GF2Solution:
         _bits(self.particular, self.width)
         if type(self.nullspace) is not tuple or len(self.nullspace) != self.width - self.rank:
             raise ValueError("invalid nullspace basis")
+        basis = {}
         for vector in self.nullspace:
             _bits(vector, self.width)
             if vector == 0:
                 raise ValueError("nullspace vectors must be nonzero")
+            reduced = vector
+            while reduced:
+                pivot = reduced.bit_length() - 1
+                if pivot not in basis:
+                    basis[pivot] = reduced
+                    break
+                reduced ^= basis[pivot]
+            if reduced == 0:
+                raise ValueError("nullspace vectors must be independent")
 
     @property
     def unique(self) -> bool:
