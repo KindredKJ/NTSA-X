@@ -7,7 +7,7 @@ from .xor_ciu import XorTransition, _bits
 
 @dataclass(frozen=True)
 class GF2Solution:
-    """Exact solution set for a square packed GF(2) linear system.
+    """Exact solution set for a packed GF(2) linear system.
 
     Every solution is the particular value XOR a subset of the independent
     vectors in nullspace. Rank is the coefficient-matrix rank.
@@ -95,6 +95,9 @@ class GF2ConstraintSystem:
         items = tuple(constraints)
         if not 1 <= len(items) <= 256:
             raise ValueError("expected 1..256 affine constraints")
+        if any(type(item) not in (tuple, list) or len(item) != 2
+               for item in items):
+            raise TypeError("each constraint must be a transition/target pair")
         first, target = items[0]
         if not isinstance(first, AffineTransition):
             raise TypeError("AffineTransition required")
@@ -135,11 +138,17 @@ class GF2ConstraintSystem:
             if known_mask & (1 << bit):
                 rows.append(1 << bit)
                 rhs.append((known_values >> bit) & 1)
+        if len(rows) > 65536:
+            raise ValueError("completed constraint limit exceeded")
         return _solve_rows(self.width, tuple(rows), tuple(rhs))
 
     def verifies(self, solution: GF2Solution) -> bool:
         """Check the particular solution and every nullspace direction."""
         if not isinstance(solution, GF2Solution) or solution.width != self.width:
+            return False
+        system_rank = _solve_rows(self.width, self.rows,
+                                  (0,) * len(self.rows)).rank
+        if solution.rank != system_rank:
             return False
         if any(((row & solution.particular).bit_count() & 1) != value
                for row, value in zip(self.rows, self.rhs)):
